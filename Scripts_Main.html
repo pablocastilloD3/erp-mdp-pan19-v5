@@ -1,0 +1,173 @@
+<script>
+/**
+ * @file Scripts_Main.html
+ * @description Núcleo SPA Consolidado v4.2.1 (URS-28 / ISO 22000).
+ * @reparación Listener de erp-auth-success para sincronizar permisos SUPER.
+ */
+
+// 1. BÓVEDA DE ESTADO GLOBAL
+window.SISTEMA_ERP = window.SISTEMA_ERP || {
+    modulos: {},
+    datos: {},
+    estadoSesion: 'INICIANDO',
+    moduloActual: 'home',
+    temaVisual: 'light',
+    bootComplete: false 
+};
+
+/**
+ * ============================================================================
+ * 2. ESCUCHA DE EVENTOS DE SISTEMA (Orquestación)
+ * ============================================================================
+ */
+window.addEventListener('erp-auth-success', (e) => {
+    console.log("🔓 [NÚCLEO] Sesión validada. Sincronizando permisos...");
+    
+    // 1. Cambiamos el estado global
+    window.SISTEMA_ERP.estadoSesion = 'ACTIVA';
+
+    // 2. 🚀 FIX CRÍTICO: Inyectamos los permisos en el Enrutador
+    // Esto asegura que el rol SUPER ["*"] sea reconocido por navegarA
+    if (!window.Ctrl_Enrutamiento) window.Ctrl_Enrutamiento = {};
+    window.Ctrl_Enrutamiento.permisosCacheados = e.detail.permisos || [];
+
+    // 3. Opcional: Navegar automáticamente a la home al entrar
+    if (typeof navegarA === 'function') navegarA('home');
+});
+
+
+/**
+ * ============================================================================
+ * 3. BOOTSTRAPPER UNIFICADO (Punto de Entrada Único)
+ * ============================================================================
+ */
+window.addEventListener('load', () => {
+    if (sessionStorage.getItem('boot_crash_loop')) {
+        document.body.innerHTML = `<div class="d-flex flex-column justify-content-center align-items-center vh-100 bg-dark text-white text-center">
+            <i class="bi bi-exclamation-octagon text-danger display-1 mb-3"></i>
+            <h2>SISTEMA DETENIDO POR CRASH LOOP</h2>
+            <button class="btn btn-outline-light mt-4" onclick="sessionStorage.removeItem('boot_crash_loop'); location.reload()">Reintentar</button>
+        </div>`;
+        return;
+    }
+    
+    sessionStorage.setItem('boot_crash_loop', 'true');
+    setTimeout(() => sessionStorage.removeItem('boot_crash_loop'), 3000); 
+
+    if (window.SISTEMA_ERP.bootComplete) return;
+    window.SISTEMA_ERP.bootComplete = true;
+
+    console.log("🚀 [NÚCLEO] Iniciando Bootloader...");
+    
+    ejecutarADC();
+    
+    if (window.Ctrl_Sesion) {
+        window.Ctrl_Sesion.iniciarAutenticacion();
+    } else {
+        console.error("❌ [NÚCLEO] No se encontró el controlador S_Sesion.");
+    }
+});
+
+/**
+ * @function ejecutarADC
+ */
+function ejecutarADC() {
+    const prefijo = 'Ctrl_';
+    let detectados = 0;
+    Object.keys(window).forEach(variableName => {
+        if (variableName.startsWith(prefijo) && typeof window[variableName] === 'object' && window[variableName] !== null) {
+            const controlador = window[variableName];
+            let moduloId = (controlador.meta && controlador.meta.id) ? controlador.meta.id.toLowerCase() : variableName.replace(prefijo, '').toLowerCase();
+            if (!window.SISTEMA_ERP.modulos[moduloId]) {
+                window.SISTEMA_ERP.modulos[moduloId] = controlador;
+                detectados++;
+            }
+        }
+    });
+    console.log(`✅ [ADC] Bóveda montada. Módulos: ${detectados}`);
+}
+
+/**
+ * ============================================================================
+ * 4. ENRUTADOR ZERO TRUST
+ * ============================================================================
+ */
+window.navegarA = function(idModulo, event) {
+    if (event) event.preventDefault();
+    
+    // Si la sesión no está activa o está muerta, no navegamos
+    if (window.SISTEMA_ERP.estadoSesion !== 'ACTIVA') return;
+
+    const id = String(idModulo).toLowerCase();
+    const mod = window.SISTEMA_ERP.modulos[id];
+    
+    // 🛡️ REGLA ZERO TRUST
+    const permisos = (window.Ctrl_Enrutamiento && window.Ctrl_Enrutamiento.permisosCacheados) 
+                     ? window.Ctrl_Enrutamiento.permisosCacheados : [];
+                     
+    // 🚀 LÓGICA DE COMODÍN: Si permisos tiene "*", pasa directo.
+    const accesoConcedido = permisos.includes('*') || permisos.includes(id);
+
+    if (!accesoConcedido) {
+        console.warn(`[ZERO TRUST] Denegado: [${id.toUpperCase()}]`);
+        if (window.ERP_Utils?.mostrarToast) {
+            window.ERP_Utils.mostrarToast("Privilegios insuficientes.", "danger");
+        }
+        return;
+    }
+
+    const moduloPrevio = window.SISTEMA_ERP.moduloActual;
+    window.SISTEMA_ERP.moduloActual = id;
+
+    // Swapping de vistas
+    document.querySelectorAll('.spa-view').forEach(vista => {
+        vista.classList.add('d-none');
+        vista.classList.remove('active');
+    });
+    
+    const targetView = document.getElementById(`view-${id}`);
+    if (targetView) {
+        targetView.classList.remove('d-none');
+        targetView.classList.add('active');
+    }
+
+    // Actualización de UI Nav
+    document.querySelectorAll('#spa-nav-menu .nav-link').forEach(link => {
+        link.classList.remove('active', 'fw-bold', 'bg-primary', 'text-white');
+        link.classList.add('text-muted');
+        if (link.getAttribute('onclick')?.includes(`'${id}'`)) {
+            link.classList.add('active', 'fw-bold', 'bg-primary', 'text-white');
+            link.classList.remove('text-muted');
+        }
+    });
+
+    if (mod) {
+        if (typeof mod.init === 'function') mod.init();
+        if (typeof mod.render === 'function') mod.render(); 
+    }
+};
+
+/**
+ * ============================================================================
+ * 5. UTILIDADES DE INTERFAZ
+ * ============================================================================
+ */
+window.ERP_Main = window.ERP_Main || {};
+
+window.ERP_Main.toggleTema = function() {
+    const html = document.documentElement;
+    const icon = document.getElementById('icon-theme');
+    const temaActual = html.getAttribute('data-bs-theme');
+    const nuevoTema = temaActual === 'light' ? 'dark' : 'light';
+    html.setAttribute('data-bs-theme', nuevoTema);
+    window.SISTEMA_ERP.temaVisual = nuevoTema;
+    if (icon) {
+        icon.className = nuevoTema === 'dark' ? 'bi bi-brightness-high-fill text-warning' : 'bi bi-moon-stars-fill text-info';
+    }
+};
+
+window.ERP_Main.toggleSidebar = function() {
+    const sidebar = document.getElementById('sys-sidebar');
+    if (sidebar) sidebar.classList.toggle('phantom-collapsed');
+};
+</script>

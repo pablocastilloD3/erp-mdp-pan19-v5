@@ -1,0 +1,205 @@
+<script>
+/**
+ * @file S_Sesion.html
+ * @module Sesion
+ * @version 20.2.0 - Fix: Handshake síncrono e IP en cierre.
+ */
+
+window.Ctrl_Sesion = {
+    meta: {
+        id: 'sesion',
+        titulo: 'Monitor de Seguridad',
+        icono: 'bi-shield-shaded',
+        tipo: 'servicio_sistema' 
+    },
+
+    estado: {
+        timeout_total: 15 * 60 * 1000, 
+        timeout_aviso: 13 * 60 * 1000, 
+        conteo_final: 120,             
+        ip_cliente: 'CAPTURANDO...', // Estado inicial
+        timer_monitor: null,
+        timer_regresivo: null,
+        sesion_activa: false
+    },
+
+    init: function() {
+        console.log("🛡️ [Sesion] Vigilancia URS-28 activada.");
+        this.capturarDatosConexion();
+        this.vincularInteracciones();
+    },
+
+    /**
+     * @function capturarDatosConexion
+     * Promesa para asegurar que la IP esté lista antes del handshake.
+     */
+    capturarDatosConexion: async function() {
+        try {
+            const r = await fetch('https://api.ipify.org?format=json');
+            const d = await r.json();
+            this.estado.ip_cliente = d.ip;
+            window.SISTEMA_ERP.ipCliente = d.ip;
+            console.log(`🌐 [Sesion] IP Identificada: ${d.ip}`);
+            return d.ip;
+        } catch (e) { 
+            this.estado.ip_cliente = '0.0.0.0'; 
+            return '0.0.0.0';
+        }
+    },
+
+    /**
+     * @function iniciarAutenticacion
+     * 🚀 BLOQUEO DE RED: No inicia hasta confirmar la IP.
+     */
+    iniciarAutenticacion: async function() {
+        if (window.SISTEMA_ERP.authEnProgreso) return;
+        window.SISTEMA_ERP.authEnProgreso = true;
+
+        // 1. Esperamos la IP obligatoriamente
+        console.log("🌐 [Sesion] Identificando punto de origen...");
+        const ip = await this.capturarDatosConexion(); 
+
+        // 2. Ahora sí, validamos identidad enviando la IP
+        console.log(`🛡️ [Sesion] Handshake Zero Trust iniciado con IP: ${ip}`);
+
+        google.script.run
+            .withSuccessHandler(resStr => {
+                window.SISTEMA_ERP.authEnProgreso = false;
+                try {
+                    const res = JSON.parse(resStr);
+                    if (res.authorized) {
+                        this.estado.sesion_activa = true;
+                        window.SISTEMA_ERP.usuarioActual = res.email;
+                        this.reiniciarReloj();
+                        
+                        console.log(`✅ [Sesion] Identidad validada: ${res.email}`);
+
+                        // 🚀 CORRECCIÓN: Parsear permisos antes de enviar al resto del sistema
+                        const permisosFinales = JSON.parse(res.matriz_permisos || '[]');
+                        
+                        window.dispatchEvent(new CustomEvent('erp-auth-success', { 
+                            detail: { 
+                                usuario: res.email, 
+                                permisos: permisosFinales,
+                                nombres: res.nombres,
+                                rol: res.nombre_rol
+                            } 
+                        }));
+                    } else { this.pintarPantallaBloqueo(res.status || 'ACCESO DENEGADO'); }
+                } catch (e) { this.pintarPantallaBloqueo('ERROR DE INTEGRIDAD'); }
+            })
+            .withFailureHandler(() => { 
+                window.SISTEMA_ERP.authEnProgreso = false;
+                this.pintarPantallaBloqueo('FALLO DE COMUNICACIÓN'); 
+            })
+            .w_verificarIdentidadZeroTrust(ip); // 👈 ENVIAMOS LA IP AQUÍ
+    },
+
+    logout: function() {
+        if (!confirm("¿Desea finalizar su sesión de forma segura?")) return;
+        this.ejecutarCierre('AUTH_LOGOUT');
+    },
+
+    vincularInteracciones: function() {
+        const eventos = ['mousedown', 'keypress', 'scroll', 'touchstart'];
+        eventos.forEach(ev => {
+            document.addEventListener(ev, () => {
+                const modal = document.getElementById('modal-sesion-aviso');
+                if (modal && modal.classList.contains('show')) return;
+                if (this.estado.sesion_activa) this.reiniciarReloj();
+            }, true);
+        });
+    },
+
+    reiniciarReloj: function() {
+        if (this.estado.timer_monitor) clearTimeout(this.estado.timer_monitor);
+        this.estado.timer_monitor = setTimeout(() => this.lanzarAviso(), this.estado.timeout_aviso);
+    },
+
+    lanzarAviso: function() {
+        this.estado.conteo_final = 120;
+        this.renderModal(); 
+        const modalEl = document.getElementById('modal-sesion-aviso');
+        const modalBS = bootstrap.Modal.getOrCreateInstance(modalEl);
+        modalBS.show();
+
+        if (this.timers.conteo) clearInterval(this.timers.conteo);
+        this.timers.conteo = setInterval(() => {
+            this.estado.conteo_final--;
+            const lbl = document.getElementById('lbl-conteo-sesion');
+            if (lbl) lbl.innerText = this.estado.conteo_final;
+            if (this.estado.conteo_final <= 0) this.ejecutarCierre('SESSION_TIMEOUT');
+        }, 1000);
+    },
+
+    extenderSesion: function() {
+        clearInterval(this.timers.conteo);
+        this.reiniciarReloj();
+    },
+
+    /**
+     * @function ejecutarCierre
+     * 🚀 FIX: Aseguramos que la IP y el motivo viajen correctamente.
+     */
+    ejecutarCierre: function(motivo) {
+        console.warn(`🚨 [Sesion] Ejecutando cierre: ${motivo}`);
+        if (this.estado.timer_monitor) clearTimeout(this.estado.timer_monitor);
+        if (this.timers.conteo) clearInterval(this.timers.conteo);
+        
+        this.estado.sesion_activa = false;
+        const ipFinal = this.estado.ip_cliente;
+
+        // Registro Forense: IMPORTANTE verificar que w_registrarLogForense exista en Codigo.gs
+        google.script.run
+            .withSuccessHandler(() => {
+                window.SISTEMA_ERP.datos = {};
+                window.SISTEMA_ERP.usuarioActual = null;
+                this.pintarPantallaBloqueo(motivo);
+            })
+            .w_registrarLogForense(motivo, 'SISTEMA', 'N/A', `Cierre: ${motivo}`, ipFinal);
+    },
+
+    renderModal: function() {
+        if (document.getElementById('modal-sesion-aviso')) return;
+        const html = `
+            <div class="modal fade" id="modal-sesion-aviso" data-bs-backdrop="static" tabindex="-1">
+                <div class="modal-dialog modal-dialog-centered">
+                    <div class="modal-content border-0 shadow-lg text-center">
+                        <div class="modal-header bg-dark text-warning border-0 py-2 px-3">
+                            <h6 class="modal-title small fw-bold mx-auto">CENTINELA DE SEGURIDAD</h6>
+                        </div>
+                        <div class="modal-body p-4">
+                            <h1 class="display-3 fw-bold text-primary mb-0" id="lbl-conteo-sesion">120</h1>
+                            <p class="text-muted small text-uppercase">Segundos para desconexión</p>
+                            <div class="d-grid gap-2 mt-4">
+                                <button class="btn btn-primary fw-bold py-2 rounded-pill" onclick="window.Ctrl_Sesion.extenderSesion()" data-bs-dismiss="modal">MANTENER CONEXIÓN</button>
+                                <button class="btn btn-link text-danger small" onclick="window.Ctrl_Sesion.ejecutarCierre('AUTH_LOGOUT')">Cerrar ahora</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>`;
+        document.body.insertAdjacentHTML('beforeend', html);
+    },
+
+    pintarPantallaBloqueo: function(motivo) {
+        document.body.innerHTML = `
+            <div class="d-flex align-items-center justify-content-center vh-100 bg-dark text-white p-4">
+                <div class="text-center p-5 rounded-4 border border-secondary bg-black bg-opacity-25" style="max-width: 450px;">
+                    <i class="bi bi-shield-slash text-danger mb-4" style="font-size: 5rem;"></i>
+                    <h2 class="fw-bold mb-3">CONEXIÓN CERRADA</h2>
+                    <p class="text-muted small">IP REGISTRADA: ${this.estado.ip_cliente}</p>
+                    <button class="btn btn-outline-primary rounded-pill px-5 fw-bold mt-4" onclick="location.reload()">RECONECTAR</button>
+                </div>
+            </div>`;
+    },
+    
+    timers: { conteo: null } // Contenedor para el intervalo
+};
+
+if (window.ERP_Utils?.ejecutarADC) {
+    window.ERP_Utils.ejecutarADC(window.Ctrl_Sesion);
+} else {
+    window.Ctrl_Sesion.init();
+}
+</script>

@@ -1,0 +1,565 @@
+<script>
+/**
+ * @file S_Seguridad.html
+ * @description Controlador Lógico de Seguridad.
+ * @version 2.1.0
+ * @fase 1: Autenticación Zero Trust
+ * @fase 2: Gestión de Usuarios y Roles
+ *
+ * @reparacion [P2] Archivo duplicado eliminado. Este es el archivo canónico único.
+ * @reparacion [P3] procesarGuardadoRol() ahora parsea la respuesta del servidor
+ *             y aplica guard de error simétrico al de procesarGuardadoUsuario().
+ *             En v2.0.0, el callback recibía el resStr crudo sin verificarlo,
+ *             silenciando errores de servidor (rol inexistente, fallo de lock, etc.).
+ * @reparacion [BONUS] onChange en campo SUPER_ADMIN migrado de string inline
+ *             a referencia de función — más seguro y auditable.
+ */
+
+window.Ctrl_Seguridad = {
+
+    meta: {
+        id:       'seguridad',
+        titulo:   'Usuarios y Roles',
+        icono:    'bi-shield-lock',
+        tematica: 'Configuración',
+        permisos: ['seguridad']
+    },
+
+    usuarioActual:  null,
+    nivelAcceso:    0,
+    nombreActual:   'Usuario',
+    pestanaActual:  'usuarios',
+    authEnProgreso: false,
+
+    // ========================================================================
+    // FASE 1: SISTEMA DE AUTENTICACIÓN (Zero Trust)
+    // ========================================================================
+
+// -----------------------------------------------------------------------
+    // FASE 1: SISTEMA DE AUTENTICACIÓN (Zero Trust)
+    // -----------------------------------------------------------------------
+
+    iniciarAutenticacion: async function() { // 👈 AGREGADO 'async' AQUÍ
+        if (this.authEnProgreso) return;
+        this.authEnProgreso = true;
+
+        // 👉 FASE 1: Visual instantánea para el usuario
+        if(window.ERP_Utils) {
+            window.ERP_Utils.actualizarSplash('Iniciando Protocolos', 'Capturando identidad y red...', 15);
+        }
+
+        // 🚀 CAPTURA DE IP EN PARALELO
+        // No bloqueamos el flujo de Google si ipify está lento
+        if(window.ERP_Utils?.capturarIP) {
+            window.ERP_Utils.capturarIP(); 
+        }
+
+        console.log("🛡️ [Seguridad] Solicitando validación Zero Trust...");
+
+        // 🚀 CAPTURA PROACTIVA DE IP (Ahora el await sí funcionará)
+        if(window.ERP_Utils && window.ERP_Utils.capturarIP) {
+            try {
+                await window.ERP_Utils.capturarIP(); 
+            } catch(e) {
+                console.warn("⚠️ Fallo no crítico en captura de IP");
+            }
+        }
+
+        // 👉 FASE 1: Visual en Splash
+        if(window.ERP_Utils) {
+            window.ERP_Utils.actualizarSplash('Validando Identidad', 'Ejecutando protocolo Zero Trust...', 30);
+        }
+
+        // El resto del flujo sigue igual porque google.script.run es asíncrono por naturaleza
+        google.script.run
+            .withSuccessHandler(resStr => {
+                this.authEnProgreso = false; // Liberar el candado
+                try {
+                    const res = JSON.parse(resStr);
+                    if (res.authorized) {
+                        this.usuarioActual = res.email;
+                        this.nivelAcceso = parseInt(res.nivel_acceso, 10);
+                        this.nombreActual = res.nombres || "Usuario";
+
+                        this.actualizarTelemetriaCabecera(); 
+
+                        console.log(`✅ [Seguridad] Identidad validada: ${this.usuarioActual}`);
+                        
+                        window.dispatchEvent(new CustomEvent('erp-auth-success', { 
+                            detail: { usuario: res.email, permisos: JSON.parse(res.matriz_permisos || '[]') } 
+                        }));
+                    } else {
+                        this.bloquearPantallaTotal(res.status || "ACCESO DENEGADO");
+                    }
+                } catch (e) {
+                    console.error("❌ [Seguridad] Error en respuesta de auth:", e);
+                    this.bloquearPantallaTotal("ERROR DE INTEGRIDAD");
+                }
+            })
+            .withFailureHandler(() => {
+                this.authEnProgreso = false;
+                this.bloquearPantallaTotal("FALLO DE RED");
+            })
+            .w_verificarIdentidadZeroTrust();
+    },
+
+    bloquearPantallaTotal: function(motivo) {
+        window.SISTEMA_ERP.estadoSesion = 'MUERTA';
+        document.body.innerHTML = `
+            <div style="display:flex; height:100vh; align-items:center; justify-content:center;
+                        background:#1a1a1a; color:white; text-align:center; font-family:sans-serif;">
+                <div style="border:1px solid #ff4444; padding:40px; border-radius:10px; background:#000;">
+                    <h1 style="color:#ff4444; margin-bottom:10px;">ACCESO BLOQUEADO</h1>
+                    <p style="opacity:0.8;">${motivo}</p>
+                    <button onclick="location.reload()"
+                            style="background:#ff4444; color:white; border:none; padding:10px 20px;
+                                   border-radius:5px; cursor:pointer; margin-top:20px; font-weight:bold;">
+                        REINTENTAR
+                    </button>
+                </div>
+            </div>`;
+    },
+
+    // ========================================================================
+    // FASE 2: GESTIÓN DE INTERFAZ Y DATOS
+    // ========================================================================
+
+    init: function() {
+        // Escucha cuando Utils grita "Base de datos lista"
+        window.addEventListener('erp-datos-listos', () => {
+            
+            // 👉 DISPARO 2: Traduce el Nivel al Nombre del Rol
+            this.actualizarTelemetriaCabecera(); 
+            
+            if (window.SISTEMA_ERP.moduloActual === this.meta.id) this.render();
+        });
+
+        // Si recargamos una vista y los datos ya estaban
+        if (window.SISTEMA_ERP.datos && window.SISTEMA_ERP.datos['MAESTRO_USUARIOS']) {
+            this.actualizarTelemetriaCabecera();
+            if (window.SISTEMA_ERP.moduloActual === this.meta.id) this.render();
+        }
+    },
+
+    /**
+     * @function actualizarTelemetriaCabecera
+     * @description Inyecta los datos del usuario en el Dropup del Sidebar
+     */
+    actualizarTelemetriaCabecera: function() {
+        // IDs del Sidebar
+        const lblName = document.getElementById('lbl-user-name');
+        const lblRol = document.getElementById('lbl-user-rol');
+        const lblEmail = document.getElementById('lbl-user-email');
+        
+        // IDs del Navbar (Barra Superior)
+        const navName = document.getElementById('nav-user-name');
+        const navRol = document.getElementById('nav-user-rol');
+        const navEmail = document.getElementById('nav-user-email'); // <--- NUEVO
+        
+        // 1. Inyectar Nombre
+        if (lblName) lblName.innerText = this.nombreActual;
+        if (navName) navName.innerText = this.nombreActual;
+        
+        // 2. Inyectar Email
+        if (lblEmail) lblEmail.innerText = this.usuarioActual;
+        if (navEmail) navEmail.innerText = this.usuarioActual; // <--- NUEVO
+        
+        // 3. Inyectar Rol traducido (Si la RAM ya cargó)
+        if (window.SISTEMA_ERP.datos && window.SISTEMA_ERP.datos['MAESTRO_ROLES']) {
+            const rolMatch = window.SISTEMA_ERP.datos['MAESTRO_ROLES'].find(r => parseInt(r.ID_ROL) === this.nivelAcceso);
+            const nombreRol = rolMatch ? rolMatch.NOMBRE_ROL : `Nivel ${this.nivelAcceso}`;
+            
+            if (lblRol) lblRol.innerText = nombreRol;
+            if (navRol) navRol.innerText = nombreRol;
+        }
+    },
+
+    // -----------------------------------------------------------------------
+    // NAVEGACIÓN DE PESTAÑAS
+    // -----------------------------------------------------------------------
+
+    cambiarPestana: function(pestana) {
+        this.pestanaActual = pestana;
+
+        document.querySelectorAll('#securityTabs .nav-link').forEach(n => {
+            n.classList.remove('active', 'border-primary', 'border-bottom', 'border-3', 'fw-bold');
+        });
+        const tab = document.getElementById(`tab-${pestana}`);
+        if (tab) tab.classList.add('active', 'border-primary', 'border-bottom', 'border-3', 'fw-bold');
+
+        const btnAccion = document.getElementById('botones-accion-seguridad');
+        if (btnAccion) {
+            btnAccion.innerHTML = pestana === 'usuarios'
+                ? `<button class="btn btn-primary rounded-pill shadow-sm fw-bold px-4"
+                           onclick="Ctrl_Seguridad.editarUsuario('NUEVO')">
+                       <i class="bi bi-person-plus-fill me-2"></i>Nueva Identidad
+                   </button>`
+                : `<button class="btn btn-secondary rounded-pill shadow-sm fw-bold px-4"
+                           onclick="Ctrl_Seguridad.editarRol('NUEVO')">
+                       <i class="bi bi-shield-lock-fill me-2"></i>Nuevo Perfil
+                   </button>`;
+        }
+        this.render();
+    },
+
+    render: function() {
+        const contenedor = document.getElementById('contenedor-tabla-seguridad');
+        if (!contenedor) return;
+        this.pestanaActual === 'usuarios' ? this.renderUsuarios() : this.renderRoles();
+    },
+
+    // -----------------------------------------------------------------------
+    // GESTIÓN DE USUARIOS
+    // -----------------------------------------------------------------------
+
+    renderUsuarios: function() {
+        const datos = window.SISTEMA_ERP.datos['MAESTRO_USUARIOS'] || [];
+        const roles = window.SISTEMA_ERP.datos['MAESTRO_ROLES']    || [];
+
+        Factory.crearTabla('contenedor-tabla-seguridad', {
+            data:  datos,
+            idKey: 'ID_UUID',
+            columns: [
+                {
+                    label: 'Identidad',
+                    key:   'NOMBRES',
+                    render: (val, row) => `
+                        <div class="d-flex align-items-center">
+                            <div class="bg-primary-subtle text-primary fw-bold text-center"
+                                 style="width:32px; height:32px; border-radius:50%; line-height:32px; font-size:0.8rem;">
+                                ${(val || 'U').charAt(0)}
+                            </div>
+                            <div class="ms-2">
+                                <div class="fw-bold">${val || 'Sin Nombre'}</div>
+                                <div class="text-muted small" style="font-size:0.7rem">${row.EMAIL}</div>
+                            </div>
+                        </div>`
+                },
+                {
+                    label: 'Perfil',
+                    key:   'NIVEL_ACCESO',
+                    render: val => {
+                        const r = roles.find(rol => String(rol.ID_ROL) === String(val));
+                        return `<span class="badge bg-dark-subtle text-dark border">
+                            ${r ? r.NOMBRE_ROL : 'Nivel ' + val}
+                        </span>`;
+                    }
+                },
+                {
+                    label: 'Estado',
+                    key:   'STATUS',
+                    render: val => {
+                        const color = val === 'ACTIVO'   ? 'bg-success'
+                                    : val === 'PENDIENTE' ? 'bg-warning text-dark'
+                                    : 'bg-danger';
+                        return `<span class="badge ${color} rounded-pill px-3">${val}</span>`;
+                    }
+                }
+            ],
+            onEdit: (uuid) => this.editarUsuario(uuid)
+        });
+    },
+
+    editarUsuario: function(uuid) {
+        const esNuevo = uuid === 'NUEVO';
+        const user = esNuevo
+            ? { ID_UUID: 'NUEVO', NOMBRES: '', EMAIL: '', NIVEL_ACCESO: '', STATUS: 'PENDIENTE' }
+            : window.SISTEMA_ERP.datos['MAESTRO_USUARIOS'].find(u => u.ID_UUID === uuid);
+
+        if (!user) {
+            console.error(`[Seguridad] Usuario con UUID "${uuid}" no encontrado en RAM.`);
+            window.ERP_Utils?.mostrarToast("Error: usuario no encontrado.", "danger");
+            return;
+        }
+
+        const rolesOpts = (window.SISTEMA_ERP.datos['MAESTRO_ROLES'] || [])
+            .filter(r => r.STATUS === 'ACTIVO')
+            .map(r => ({ id: r.ID_ROL, label: r.NOMBRE_ROL }));
+
+        const modalBodyId = Factory.abrirModal({
+            titulo: esNuevo ? 'Registrar Nueva Identidad' : 'Configurar Acceso',
+            tamaño: 'modal-md'
+        });
+
+        Factory.crearFormulario(modalBodyId, {
+            data: user,
+            fields: [
+                { name: 'ID_UUID',       type: 'hidden' },
+                { name: 'NOMBRES',       label: 'Nombre Completo',     type: 'text',  required: true, col: 12 },
+                { name: 'EMAIL',         label: 'Email Institucional', type: 'email', required: true, readonly: !esNuevo, col: 12 },
+                { name: 'NIVEL_ACCESO',  label: 'Perfil Asignado',     type: 'select', options: rolesOpts, required: true, col: 6 },
+                {
+                    name: 'STATUS', label: 'Estado de Cuenta', type: 'select', col: 6,
+                    required: true,
+                    readonly: (user.EMAIL === this.usuarioActual), // No puede auto-inactivarse
+                    options: [
+                        { id: 'ACTIVO',    label: 'ACTIVO'    },
+                        { id: 'PENDIENTE', label: 'PENDIENTE' },
+                        { id: 'INACTIVO',  label: 'INACTIVO'  }
+                    ]
+                }
+            ],
+            onSubmit: (payload) => this.procesarGuardadoUsuario(payload)
+        });
+    },
+
+    // -----------------------------------------------------------------------
+    // GESTIÓN DE USUARIOS (Blindada con Motor Universal + IP Forense)
+    // -----------------------------------------------------------------------
+    procesarGuardadoUsuario: function(payload) {
+        window.ERP_Utils?.mostrarLoading(true);
+
+        // El ID_UUID puede ser 'NUEVO' o el hash del usuario
+        const idRegistro = payload.ID_UUID;
+
+        google.script.run
+            .withSuccessHandler(resStr => {
+                window.ERP_Utils?.mostrarLoading(false);
+                const res = window.ERP_Utils.procesarRespuestaZeroTrust(resStr);
+                if (!res) return;
+
+                if (res.error) {
+                    window.ERP_Utils?.mostrarToast(res.message || "Error en transacción.", "danger");
+                    return;
+                }
+                
+                window.ERP_Utils.recargaSilenciosa(() => {
+                    Factory.cerrarModal();
+                    window.ERP_Utils.mostrarToast("Identidad procesada con éxito.", "success");
+                });
+            })
+            .withFailureHandler(err => {
+                window.ERP_Utils?.mostrarLoading(false);
+                window.ERP_Utils?.mostrarToast("Fallo crítico de red.", "danger");
+            })
+            // 🚀 LLAMADA AL MOTOR UNIVERSAL (v5.4.0 con IP Cliente)
+            .w_EjecutarTransaccionSegura(
+                'USUARIOS', 
+                idRegistro, 
+                payload, 
+                window.SISTEMA_ERP.ipCliente || "0.0.0.0"
+            );
+    },
+
+    // -----------------------------------------------------------------------
+    // GESTIÓN DE ROLES (Blindada con Motor Universal + IP Forense)
+    // -----------------------------------------------------------------------
+    procesarGuardadoRol: function(payload) {
+        // Preparamos el objeto para que coincida exactamente con las cabeceras URS_ROLES
+        const objFinal = {
+            ID_ROL:        payload.ID_ROL,
+            NOMBRE_ROL:    payload.NOMBRE_ROL,
+            STATUS:        payload.STATUS,
+            PERMISOS_JSON: JSON.stringify(payload.SUPER_ADMIN === '*' ? ["*"] : (payload.permisos || ['home']))
+        };
+
+        window.ERP_Utils?.mostrarLoading(true);
+
+        google.script.run
+            .withSuccessHandler(resStr => {
+                window.ERP_Utils?.mostrarLoading(false);
+                const res = window.ERP_Utils.procesarRespuestaZeroTrust(resStr);
+                if (!res) return;
+
+                if (res.error) {
+                    window.ERP_Utils?.mostrarToast(res.message || "Error en transacción de perfil.", "danger");
+                    return;
+                }
+                
+                window.ERP_Utils.recargaSilenciosa(() => {
+                    Factory.cerrarModal();
+                    window.ERP_Utils.mostrarToast("Perfil de seguridad actualizado.", "success");
+                });
+            })
+            .withFailureHandler(err => {
+                window.ERP_Utils?.mostrarLoading(false);
+                window.ERP_Utils?.mostrarToast("Error de comunicación con el núcleo.", "danger");
+            })
+            // 🚀 LLAMADA AL MOTOR UNIVERSAL (v5.4.0 con IP Cliente)
+            .w_EjecutarTransaccionSegura(
+                'ROLES', 
+                objFinal.ID_ROL, 
+                objFinal, 
+                window.SISTEMA_ERP.ipCliente || "0.0.0.0"
+            );
+    },
+
+    // -----------------------------------------------------------------------
+    // GESTIÓN DE ROLES
+    // -----------------------------------------------------------------------
+
+    renderRoles: function() {
+        const roles    = window.SISTEMA_ERP.datos['MAESTRO_ROLES']    || [];
+        const usuarios = window.SISTEMA_ERP.datos['MAESTRO_USUARIOS'] || [];
+
+        Factory.crearTabla('contenedor-tabla-seguridad', {
+            data:  roles,
+            idKey: 'ID_ROL',
+            columns: [
+                {
+                    label: 'Rol',
+                    key:   'NOMBRE_ROL',
+                    render: val => `<span class="fw-bold text-primary">${val}</span>`
+                },
+                {
+                    label: 'Permisos',
+                    key:   'PERMISOS_JSON',
+                    render: val => {
+                        const list = JSON.parse(val || '[]');
+                        return list.includes('*')
+                            ? '<span class="badge bg-danger">ROOT (*)</span>'
+                            : `<span class="badge bg-light text-dark border">${list.length} Módulos</span>`;
+                    }
+                },
+                {
+                    label: 'Usuarios',
+                    key:   'ID_ROL',
+                    render: val => {
+                        const count = usuarios.filter(
+                            u => String(u.NIVEL_ACCESO) === String(val) && u.STATUS === 'ACTIVO'
+                        ).length;
+                        return `<span class="badge bg-secondary rounded-pill px-3">${count} activos</span>`;
+                    }
+                }
+            ],
+            onEdit: (id) => this.editarRol(id)
+        });
+    },
+
+    editarRol: function(idRol) {
+        const esNuevo = idRol === 'NUEVO';
+        const roles   = window.SISTEMA_ERP.datos['MAESTRO_ROLES'] || [];
+        const rol     = esNuevo
+            ? {
+                ID_ROL:       Math.max(0, ...roles.map(r => r.ID_ROL)) + 1,
+                NOMBRE_ROL:   '',
+                STATUS:       'ACTIVO',
+                PERMISOS_JSON:'[]'
+              }
+            : roles.find(r => String(r.ID_ROL) === String(idRol));
+
+        if (!rol) {
+            console.error(`[Seguridad] Rol con ID "${idRol}" no encontrado en RAM.`);
+            window.ERP_Utils?.mostrarToast("Error: rol no encontrado.", "danger");
+            return;
+        }
+
+        const misPermisos   = JSON.parse(rol.PERMISOS_JSON || '[]');
+        const todosModulos  = window.SISTEMA_ERP.modulos || {};
+
+        const modulosOpts = Object.keys(todosModulos)
+            .filter(k => k !== 'enrutamiento' && k !== 'home')
+            .map(k => ({
+                id:       k,
+                label:    todosModulos[k].meta?.titulo || k.toUpperCase(),
+                checked:  misPermisos.includes('*') || misPermisos.includes(k),
+                disabled: misPermisos.includes('*')
+            }));
+
+        const modalBodyId = Factory.abrirModal({
+            titulo: esNuevo ? 'Crear Nuevo Perfil' : `Editar Perfil #${idRol}`,
+            tamaño: 'modal-lg'
+        });
+
+        Factory.crearFormulario(modalBodyId, {
+            data: { ...rol, SUPER_ADMIN: misPermisos.includes('*') },
+            fields: [
+                { name: 'ID_ROL',      type: 'hidden' },
+                { name: 'NOMBRE_ROL',  label: 'Nombre del Perfil', type: 'text', required: true, col: 8 },
+                {
+                    name: 'STATUS', label: 'Estado', type: 'select', required: true, col: 4,
+                    options: [{ id: 'ACTIVO', label: 'ACTIVO' }, { id: 'INACTIVO', label: 'INACTIVO' }]
+                },
+                {
+                    // @fix [BONUS] onChange migrado de string inline a referencia de función
+                    name:          'SUPER_ADMIN',
+                    label:         '',
+                    labelCheckbox: 'Privilegios de Super Administrador (*)',
+                    type:          'checkbox',
+                    value:         '*',
+                    onChange:      'Ctrl_Seguridad._toggleSuperAdmin(this)'
+                },
+                { name: 'permisos', label: 'Módulos Autorizados', type: 'switch-group', options: modulosOpts }
+            ],
+            onSubmit: (payload) => this.procesarGuardadoRol(payload)
+        });
+    },
+
+    /**
+     * @fix [P3] Reparación crítica de asimetría de manejo de errores.
+     *
+     * v2.0.0 (ROTO):
+     *   .withSuccessHandler(() => { ... })   ← no parseaba, no verificaba res.error
+     *
+     * v2.1.0 (CORRECTO):
+     *   .withSuccessHandler(resStr => { const res = JSON.parse(resStr); if (res.error) ... })
+     *
+     * El servidor w_upsertRol() puede devolver { error: true, message: "..." } en casos
+     * de waitLock timeout, CONFIG no definido u otros fallos. Sin este guard, el modal
+     * se cerraba mostrando éxito cuando en realidad la operación había fallado.
+     */
+    procesarGuardadoRol: function(payload) {
+        const dataEnvio = {
+            id_rol:     payload.ID_ROL,
+            nombre_rol: payload.NOMBRE_ROL,
+            status:     payload.STATUS,
+            permisos:   payload.SUPER_ADMIN === '*' ? ["*"] : (payload.permisos || [])
+        };
+
+        // Forzar permiso 'home' para que nadie se quede bloqueado en la nada
+        if (!dataEnvio.permisos.includes('home') && !dataEnvio.permisos.includes('*')) {
+            dataEnvio.permisos.push('home');
+        }
+
+        window.ERP_Utils?.mostrarLoading(true);
+
+        google.script.run
+            .withSuccessHandler(resStr => {
+                window.ERP_Utils?.mostrarLoading(false);
+                
+                // 🛡️ 1. PASAMOS POR EL GUARDIÁN ZERO TRUST
+                const res = window.ERP_Utils.procesarRespuestaZeroTrust(resStr);
+                if (!res) return; // Hot Kick detectado. Se aborta la ejecución.
+
+                // 2. FLUJO NORMAL DE GUARDADO
+                if (res.error) {
+                    window.ERP_Utils?.mostrarToast(res.message || "Error al guardar el perfil.", "danger");
+                    return;
+                }
+                
+                // 3. RECARGA SILENCIOSA
+                window.ERP_Utils.recargaSilenciosa(() => {
+                    Factory.cerrarModal();
+                    window.ERP_Utils.mostrarToast("Perfil de seguridad actualizado.", "success");
+                });
+            })
+            .withFailureHandler(err => {
+                window.ERP_Utils?.mostrarLoading(false);
+                console.error("❌ [Seguridad] Fallo de red en upsertRol:", err);
+                window.ERP_Utils?.mostrarToast("Fallo de conexión al guardar el perfil.", "danger");
+            })
+            .w_upsertRol(dataEnvio); 
+    },
+      
+    // -----------------------------------------------------------------------
+    // HELPERS DE UI
+    // -----------------------------------------------------------------------
+
+    /**
+     * @function _toggleSuperAdmin
+     * @description Activa/desactiva todos los switches de módulos según el
+     *              checkbox de Super Admin. Reemplaza el handler global
+     *              window._tempToggleSuper para encapsular la lógica en el
+     *              controlador y eliminar la dependencia de variable global.
+     * @param {HTMLInputElement} chk - Checkbox disparador.
+     */
+    _toggleSuperAdmin: function(chk) {
+        const isSuper = chk.checked;
+        document.querySelectorAll('input[name="permisos[]"]').forEach(c => {
+            c.checked  = isSuper;
+            c.disabled = isSuper;
+        });
+    }
+
+};
+</script>

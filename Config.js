@@ -1,0 +1,96 @@
+/**
+ * @file Config.gs
+ * @description Fuente de la Verdad Inmutable. Mapeo URS y Lógica de Relaciones.
+ * Versión: 2.2.0 - Normalización URS-28 (Iron Flow) para MAESTRO_ITEMS.
+ */
+
+var CONFIG = {
+  APP_NAME: "ERP MDP PAN19",
+  VERSION: "4.0.0",
+  ENV: "DEV",
+  COMPLIANCE: {
+    NORMA_1: "ISO 22000 COMPLIANT",
+    NORMA_2: "DTE SII CHILE"
+  },
+  ARCHITECTURE: "Zero Trust Architecture",
+  CHILE_OFFSET: "America/Santiago", // SSoT para getTimestampChile
+  SPREADSHEET_ID: "1vwJaRvW8eTFqfhr02yOvPBOMvmDtTI6mJ_irXQXtZk4/edit?gid=184518912", // AÑADE AQUÍ EL ID DE GOOGLE SHEET
+  FOLDER_XML_BODEGA: "1rRUzM1XqSshYn1YjD5irqFzzjgg3Ztw1", // ERP V4 -> RESPALDOS XML/PDF
+
+  // =========================================================================
+  // 1. MAPEO DE TABLAS FÍSICAS (Nombres de pestañas en Google Sheets)
+  // =========================================================================
+  DB: {
+    COMPRAS: 'LIBRO_COMPRAS',
+    ITEMS: 'MAESTRO_ITEMS',
+    CONFIG: 'SYS_CONFIG',
+    PROVEEDORES: 'MAESTRO_PROVEEDORES',
+    AUDIT_LOG: 'SYS_AUDIT_LOG',
+    USUARIOS: 'MAESTRO_USUARIOS',
+    ROLES: 'MAESTRO_ROLES',
+    LOTES: 'ABASTECIMIENTO_LOTES',
+    CAJA: 'LIBRO_CAJA' // <--- Incorporación de la 9na Tabla
+  },
+
+  // =========================================================================
+  // 2. DICCIONARIO TÉCNICO URS (Uniform Record Structure)
+  // =========================================================================
+
+  URS_COMP: { // Tabla: LIBRO_COMPRAS
+    ID_UUID: 0, TIMESTAMP_CREATE: 1, TIMESTAMP_UPDATE: 2, USER_CREATOR: 3, USER_UPDATER: 4, STATUS: 5,
+    FECHA_EMISION: 6, TIPO_DTE: 7, FOLIO: 8, RUT_EMISOR: 9, RAZON_SOCIAL: 10, FECHA_RECEPCION_REAL: 11,
+    MONTO_NETO: 12, MONTO_EXENTO: 13, MONTO_IVA: 14, OTROS_IMPUESTOS: 15, MONTO_TOTAL: 16, OBSERVACIONES: 17,
+    ISO_LOTE: 18, ISO_VENCIMIENTO: 19, ISO_ALERGENOS: 20, ISO_RIESGO_PROV: 21, CONTROL_CALIDAD: 22,
+    ESTADO_PAGO: 23, URL_XML: 24, SII_FCT_PROP: 25, SOURCE_APP: 26, CATEGORY_FLOW: 27, DETALLE_JSON: 28
+  },
+
+  MAPA_DTE: {
+    SKU: 'sku',    // Llave para el identificador del producto
+    NOMBRE: 'nmb', // Nombre del Producto
+    CANTIDAD: 'qty', // Llave para unidades compradas
+    PRECIO: 'prc',   // Llave para precio neto unitario
+    DESC: 'det'      // Llave para descripción de la línea
+  },
+
+  URS_CAJA: { // Tabla: LIBRO_CAJA (Nueva Estructura Técnica)
+    ID_MOVIMIENTO: 0, FECHA_BANCO: 1, INSTITUCION: 2, DESCRIPCION_BANCO: 3, TIPO: 4,
+    MONTO: 5, ESTADO_CONCILIACION: 6, FOLIO_VINCULADO: 7, FECHA_SISTEMA: 8, USUARIO_SYNC: 9
+  },
+
+  URS_LOTES: { // Tabla: ABASTECIMIENTO_LOTES
+    ID_UUID: 0, ID_LOTE_PAN19: 1, SKU_INTERNO: 2, LOTE_PROVEEDOR: 3, DTE_TIPO: 4, DTE_FOLIO: 5,
+    RUT_PROVEEDOR: 6, FECHA_ELABORACION: 7, FECHA_CADUCIDAD: 8, CANTIDAD_ORIGINAL: 9, SALDO_ACTUAL: 10,
+    UBICACION: 11, ESTADO_CALIDAD: 12, URL_EVIDENCIA: 13, TIMESTAMP_CREATE: 14, USER_CREATOR: 15
+  },
+
+  URS_ITEMS: { // Tabla: MAESTRO_ITEMS (Alineada a URS-28 Iron Flow)
+    ID_ITEM: 0, TIMESTAMP_UPDATE: 1, USER_UPDATER: 2, STATUS: 3, SKU_INTERNO: 4,
+    NOMBRE_TECNICO: 5, TIPO_ITEM: 6, UNIDAD_MEDIDA: 7, AFECTO_IVA: 8, CUENTA_CONTABLE: 9,
+    CATEGORIA_ABC: 10, STOCK_MINIMO: 11, PUNTO_REORDEN: 12, STOCK_MAXIMO: 13,
+    ISO_ALERGENOS: 14, ISO_VIDA_UTIL_DIAS: 15, RUT_PROV_PREFERENTE: 16, FICHA_TECNICA_JSON: 17
+  },
+
+  URS_PROV: { // Tabla: MAESTRO_PROVEEDORES
+    ID_UUID: 0, TIMESTAMP_CREATE: 1, TIMESTAMP_UPDATE: 2, STATUS: 3, RUT_ENTIDAD: 4, RAZON_SOCIAL: 5,
+    GIRO: 6, ACTECO: 7, DIRECCION: 8, COMUNA: 9, CIUDAD: 10, EMAIL: 11, TELEFONO: 12, ISO_RIESGO: 13,
+    ISO_CERTIFICADOS: 14, FECHA_ULT_AUDITORIA: 15, CATALOGO_JSON: 16, CONDICION_PAGO: 17,
+    OBSERVACIONES: 18, USER_UPDATER: 19, ALERTA_AUTO: 20, ALERTA_STATUS: 21
+  },
+
+  URS_AUDIT: { // Tabla: SYS_AUDIT_LOG
+    ID_LOG: 0, TIMESTAMP: 1, USER_EMAIL: 2, ACTION_TYPE: 3, MODULO: 4, ENTIDAD_ID: 5,
+    VALOR_ANTERIOR: 6, VALOR_NUEVO: 7, IP_ADDRESS: 8, DETALLES: 9, HASH_RECORD: 10, HASH_PREVIOUS: 11
+  },
+
+  URS_USER: { // Tabla: MAESTRO_USUARIOS
+    ID_UUID: 0, EMAIL: 1, NIVEL_ACCESO: 2, STATUS: 3, NOMBRES: 4, TIMESTAMP_CREATE: 5, USER_CREATOR: 6
+  },
+
+  URS_CONFIG: { // Tabla: SYS_CONFIG
+    PARAM_KEY: 0, PARAM_VALUE: 1, TIPO_DATO: 2, DESCRIPCION: 3, TIMESTAMP_UPDATE: 4, USER_UPDATER: 5
+  },
+
+  URS_ROLES: { // Tabla: MAESTRO_ROLES
+    ID_ROL: 0, NOMBRE_ROL: 1, PERMISOS_JSON: 2, STATUS: 3, TIMESTAMP_UPDATE: 4
+  }
+};
