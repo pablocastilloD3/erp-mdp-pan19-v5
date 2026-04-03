@@ -1,173 +1,251 @@
 <script>
-/**
- * @file Scripts_Main.html
- * @description Núcleo SPA Consolidado v4.2.1 (URS-28 / ISO 22000).
- * @reparación Listener de erp-auth-success para sincronizar permisos SUPER.
- */
+    /**
+     * @file Scripts_Main.html
+     * @description Núcleo SPA Consolidado v5.1.0 (URS-28 / ISO 22000).
+     * @reparacion [V5.1.0] Enrutamiento Inteligente, Kill-Switch en Vivo y Hot-Reload de RBAC.
+     */
 
-// 1. BÓVEDA DE ESTADO GLOBAL
-window.SISTEMA_ERP = window.SISTEMA_ERP || {
-    modulos: {},
-    datos: {},
-    estadoSesion: 'INICIANDO',
-    moduloActual: 'home',
-    temaVisual: 'light',
-    bootComplete: false 
-};
+    // 1. BÓVEDA DE ESTADO GLOBAL
+    window.SISTEMA_ERP = window.SISTEMA_ERP || {
+        modulos: {},
+        datos: {},
+        estadoSesion: 'INICIANDO',
+        moduloActual: 'home',
+        temaVisual: 'light',
+        bootComplete: false
+    };
 
-/**
- * ============================================================================
- * 2. ESCUCHA DE EVENTOS DE SISTEMA (Orquestación)
- * ============================================================================
- */
-window.addEventListener('erp-auth-success', (e) => {
-    console.log("🔓 [NÚCLEO] Sesión validada. Sincronizando permisos...");
-    
-    // 1. Cambiamos el estado global
-    window.SISTEMA_ERP.estadoSesion = 'ACTIVA';
+    /**
+     * ============================================================================
+     * 2. ESCUCHA DE EVENTOS DE SISTEMA (Orquestación)
+     * ============================================================================
+     */
+    window.addEventListener('erp-auth-success', (e) => {
+        console.log("🔓 [NÚCLEO] Sesión validada. Evaluando matriz de aterrizaje...");
 
-    // 2. 🚀 FIX CRÍTICO: Inyectamos los permisos en el Enrutador
-    // Esto asegura que el rol SUPER ["*"] sea reconocido por navegarA
-    if (!window.Ctrl_Enrutamiento) window.Ctrl_Enrutamiento = {};
-    window.Ctrl_Enrutamiento.permisosCacheados = e.detail.permisos || [];
+        window.SISTEMA_ERP.estadoSesion = 'ACTIVA';
 
-    // 3. Opcional: Navegar automáticamente a la home al entrar
-    if (typeof navegarA === 'function') navegarA('home');
-});
+        if (!window.Ctrl_Enrutamiento) window.Ctrl_Enrutamiento = {};
+        const permisos = e.detail.permisos || [];
+        window.Ctrl_Enrutamiento.permisosCacheados = permisos;
+
+        // 🚀 FIX V5.1.0: ENRUTAMIENTO INTELIGENTE DE ARRANQUE
+        if (typeof navegarA === 'function') {
+            if (permisos.includes('*') || permisos.includes('home')) {
+                navegarA('home'); // Descenso normal
+            } else {
+                // Buscar el primer módulo permitido si no puede ver el Dashboard
+                const primerModulo = Object.keys(window.SISTEMA_ERP.modulos).find(key =>
+                    key !== 'enrutamiento' && key !== 'sesion' && permisos.includes(key)
+                );
+
+                if (primerModulo) {
+                    navegarA(primerModulo); // Aterrizaje táctico
+                } else {
+                    // Si no tiene acceso a NADA operativo, abortar misión
+                    console.error("🚨 [NÚCLEO] Usuario sin accesos operativos.");
+                    if (window.Ctrl_Sesion) window.Ctrl_Sesion.ejecutarCierre('SIN_PRIVILEGIOS_BASE');
+                }
+            }
+        }
+    });
+
+    // 🚀 FIX V5.1.0: CENTINELA ZERO-TRUST (Kill-Switch y Hot-Reload)
+    window.addEventListener('erp-datos-listos', () => {
+        if (window.SISTEMA_ERP.estadoSesion !== 'ACTIVA') return;
+
+        // Buscar la identidad en la bóveda
+        const email = window.SISTEMA_ERP.identidad?.email || window.SISTEMA_ERP.usuarioActual;
+        if (!email) return;
+
+        const usuarios = window.SISTEMA_ERP.datos['MAESTRO_USUARIOS'];
+        const roles = window.SISTEMA_ERP.datos['MAESTRO_ROLES'];
+
+        if (!usuarios || !roles) return;
+
+        // Buscar estado actual en RAM
+        const userRow = usuarios.find(u => String(u.EMAIL).toLowerCase() === String(email).toLowerCase());
+
+        // 💀 1. KILL-SWITCH: Ejecución inmediata si el estado cambia a INACTIVO
+        if (!userRow || userRow.STATUS !== 'ACTIVO') {
+            console.error(`🚨 [ZERO TRUST] Cuenta inactiva o eliminada en caliente: ${email}`);
+            if (window.Ctrl_Sesion) window.Ctrl_Sesion.ejecutarCierre('CUENTA_DESACTIVADA');
+            return;
+        }
+
+        // 🔄 2. HOT-RELOAD DE PERMISOS: Recalcular matriz en vivo
+        const idRol = userRow.NIVEL_ACCESO;
+        const rolRow = roles.find(r => String(r.ID_ROL) === String(idRol) && r.STATUS === 'ACTIVO');
+
+        let nuevosPermisos = [];
+        if (rolRow) {
+            try { nuevosPermisos = JSON.parse(rolRow.PERMISOS_JSON || '[]'); } catch (e) { }
+        }
+
+        // Comparamos si hubo una mutación de permisos
+        if (window.Ctrl_Enrutamiento) {
+            const strViejos = JSON.stringify(window.Ctrl_Enrutamiento.permisosCacheados || []);
+            const strNuevos = JSON.stringify(nuevosPermisos);
+
+            if (strViejos !== strNuevos) {
+                console.warn("🔄 [NÚCLEO] Actualización de matriz RBAC detectada en caliente.");
+                window.Ctrl_Enrutamiento.permisosCacheados = nuevosPermisos;
+
+                // Reconstruir UI visual del menú
+                window.Ctrl_Enrutamiento.construirMenuGenerativo(nuevosPermisos);
+
+                // ⛔ 3. DESALOJO EN CALIENTE: ¿El usuario sigue teniendo derecho de estar donde está?
+                const modActual = window.SISTEMA_ERP.moduloActual;
+                if (!nuevosPermisos.includes('*') && !nuevosPermisos.includes(modActual)) {
+                    console.warn(`🚨 [ZERO TRUST] Permiso revocado en caliente para módulo: ${modActual}`);
+                    window.ERP_Utils?.mostrarToast("Acceso revocado por el administrador.", "danger");
+
+                    // Intentamos un escape táctico
+                    if (nuevosPermisos.includes('home')) {
+                        navegarA('home');
+                    } else {
+                        const escapeMod = Object.keys(window.SISTEMA_ERP.modulos).find(key =>
+                            key !== 'enrutamiento' && key !== 'sesion' && nuevosPermisos.includes(key)
+                        );
+                        if (escapeMod) navegarA(escapeMod);
+                        else window.Ctrl_Sesion.ejecutarCierre('PRIVILEGIOS_REVOCADOS');
+                    }
+                }
+            }
+        }
+    });
 
 
-/**
- * ============================================================================
- * 3. BOOTSTRAPPER UNIFICADO (Punto de Entrada Único)
- * ============================================================================
- */
-window.addEventListener('load', () => {
-    if (sessionStorage.getItem('boot_crash_loop')) {
-        document.body.innerHTML = `<div class="d-flex flex-column justify-content-center align-items-center vh-100 bg-dark text-white text-center">
+    /**
+     * ============================================================================
+     * 3. BOOTSTRAPPER UNIFICADO (Punto de Entrada Único)
+     * ============================================================================
+     */
+    window.addEventListener('load', () => {
+        if (sessionStorage.getItem('boot_crash_loop')) {
+            document.body.innerHTML = `<div class="d-flex flex-column justify-content-center align-items-center vh-100 bg-dark text-white text-center">
             <i class="bi bi-exclamation-octagon text-danger display-1 mb-3"></i>
             <h2>SISTEMA DETENIDO POR CRASH LOOP</h2>
             <button class="btn btn-outline-light mt-4" onclick="sessionStorage.removeItem('boot_crash_loop'); location.reload()">Reintentar</button>
         </div>`;
-        return;
-    }
-    
-    sessionStorage.setItem('boot_crash_loop', 'true');
-    setTimeout(() => sessionStorage.removeItem('boot_crash_loop'), 3000); 
+            return;
+        }
 
-    if (window.SISTEMA_ERP.bootComplete) return;
-    window.SISTEMA_ERP.bootComplete = true;
+        sessionStorage.setItem('boot_crash_loop', 'true');
+        setTimeout(() => sessionStorage.removeItem('boot_crash_loop'), 3000);
 
-    console.log("🚀 [NÚCLEO] Iniciando Bootloader...");
-    
-    ejecutarADC();
-    
-    if (window.Ctrl_Sesion) {
-        window.Ctrl_Sesion.iniciarAutenticacion();
-    } else {
-        console.error("❌ [NÚCLEO] No se encontró el controlador S_Sesion.");
-    }
-});
+        if (window.SISTEMA_ERP.bootComplete) return;
+        window.SISTEMA_ERP.bootComplete = true;
 
-/**
- * @function ejecutarADC
- */
-function ejecutarADC() {
-    const prefijo = 'Ctrl_';
-    let detectados = 0;
-    Object.keys(window).forEach(variableName => {
-        if (variableName.startsWith(prefijo) && typeof window[variableName] === 'object' && window[variableName] !== null) {
-            const controlador = window[variableName];
-            let moduloId = (controlador.meta && controlador.meta.id) ? controlador.meta.id.toLowerCase() : variableName.replace(prefijo, '').toLowerCase();
-            if (!window.SISTEMA_ERP.modulos[moduloId]) {
-                window.SISTEMA_ERP.modulos[moduloId] = controlador;
-                detectados++;
+        console.log("🚀 [NÚCLEO] Iniciando Bootloader...");
+
+        ejecutarADC();
+
+        if (window.Ctrl_Sesion) {
+            window.Ctrl_Sesion.iniciarAutenticacion();
+        } else {
+            console.error("❌ [NÚCLEO] No se encontró el controlador S_Sesion.");
+        }
+    });
+
+    /**
+     * @function ejecutarADC
+     */
+    function ejecutarADC() {
+        const prefijo = 'Ctrl_';
+        let detectados = 0;
+        Object.keys(window).forEach(variableName => {
+            if (variableName.startsWith(prefijo) && typeof window[variableName] === 'object' && window[variableName] !== null) {
+                const controlador = window[variableName];
+                let moduloId = (controlador.meta && controlador.meta.id) ? controlador.meta.id.toLowerCase() : variableName.replace(prefijo, '').toLowerCase();
+                if (!window.SISTEMA_ERP.modulos[moduloId]) {
+                    window.SISTEMA_ERP.modulos[moduloId] = controlador;
+                    detectados++;
+                }
             }
+        });
+        console.log(`✅ [ADC] Bóveda montada. Módulos: ${detectados}`);
+    }
+
+    /**
+     * ============================================================================
+     * 4. ENRUTADOR ZERO TRUST
+     * ============================================================================
+     */
+    window.navegarA = function (idModulo, event) {
+        if (event) event.preventDefault();
+
+        if (window.SISTEMA_ERP.estadoSesion !== 'ACTIVA') return;
+
+        const id = String(idModulo).toLowerCase();
+        const mod = window.SISTEMA_ERP.modulos[id];
+
+        // 🛡️ REGLA ZERO TRUST
+        const permisos = (window.Ctrl_Enrutamiento && window.Ctrl_Enrutamiento.permisosCacheados)
+            ? window.Ctrl_Enrutamiento.permisosCacheados : [];
+
+        const accesoConcedido = permisos.includes('*') || permisos.includes(id);
+
+        if (!accesoConcedido) {
+            console.warn(`[ZERO TRUST] Denegado: [${id.toUpperCase()}]`);
+            if (window.ERP_Utils?.mostrarToast) {
+                window.ERP_Utils.mostrarToast("Privilegios insuficientes.", "danger");
+            }
+            return;
         }
-    });
-    console.log(`✅ [ADC] Bóveda montada. Módulos: ${detectados}`);
-}
 
-/**
- * ============================================================================
- * 4. ENRUTADOR ZERO TRUST
- * ============================================================================
- */
-window.navegarA = function(idModulo, event) {
-    if (event) event.preventDefault();
-    
-    // Si la sesión no está activa o está muerta, no navegamos
-    if (window.SISTEMA_ERP.estadoSesion !== 'ACTIVA') return;
+        const moduloPrevio = window.SISTEMA_ERP.moduloActual;
+        window.SISTEMA_ERP.moduloActual = id;
 
-    const id = String(idModulo).toLowerCase();
-    const mod = window.SISTEMA_ERP.modulos[id];
-    
-    // 🛡️ REGLA ZERO TRUST
-    const permisos = (window.Ctrl_Enrutamiento && window.Ctrl_Enrutamiento.permisosCacheados) 
-                     ? window.Ctrl_Enrutamiento.permisosCacheados : [];
-                     
-    // 🚀 LÓGICA DE COMODÍN: Si permisos tiene "*", pasa directo.
-    const accesoConcedido = permisos.includes('*') || permisos.includes(id);
+        // Swapping de vistas
+        document.querySelectorAll('.spa-view').forEach(vista => {
+            vista.classList.add('d-none');
+            vista.classList.remove('active');
+        });
 
-    if (!accesoConcedido) {
-        console.warn(`[ZERO TRUST] Denegado: [${id.toUpperCase()}]`);
-        if (window.ERP_Utils?.mostrarToast) {
-            window.ERP_Utils.mostrarToast("Privilegios insuficientes.", "danger");
+        const targetView = document.getElementById(`view-${id}`);
+        if (targetView) {
+            targetView.classList.remove('d-none');
+            targetView.classList.add('active');
         }
-        return;
-    }
 
-    const moduloPrevio = window.SISTEMA_ERP.moduloActual;
-    window.SISTEMA_ERP.moduloActual = id;
+        // Actualización de UI Nav
+        document.querySelectorAll('#spa-nav-menu .nav-link').forEach(link => {
+            link.classList.remove('active', 'fw-bold', 'bg-primary', 'text-white');
+            link.classList.add('text-muted');
+            if (link.getAttribute('onclick')?.includes(`'${id}'`)) {
+                link.classList.add('active', 'fw-bold', 'bg-primary', 'text-white');
+                link.classList.remove('text-muted');
+            }
+        });
 
-    // Swapping de vistas
-    document.querySelectorAll('.spa-view').forEach(vista => {
-        vista.classList.add('d-none');
-        vista.classList.remove('active');
-    });
-    
-    const targetView = document.getElementById(`view-${id}`);
-    if (targetView) {
-        targetView.classList.remove('d-none');
-        targetView.classList.add('active');
-    }
-
-    // Actualización de UI Nav
-    document.querySelectorAll('#spa-nav-menu .nav-link').forEach(link => {
-        link.classList.remove('active', 'fw-bold', 'bg-primary', 'text-white');
-        link.classList.add('text-muted');
-        if (link.getAttribute('onclick')?.includes(`'${id}'`)) {
-            link.classList.add('active', 'fw-bold', 'bg-primary', 'text-white');
-            link.classList.remove('text-muted');
+        if (mod) {
+            if (typeof mod.init === 'function') mod.init();
+            if (typeof mod.render === 'function') mod.render();
         }
-    });
+    };
 
-    if (mod) {
-        if (typeof mod.init === 'function') mod.init();
-        if (typeof mod.render === 'function') mod.render(); 
-    }
-};
+    /**
+     * ============================================================================
+     * 5. UTILIDADES DE INTERFAZ
+     * ============================================================================
+     */
+    window.ERP_Main = window.ERP_Main || {};
 
-/**
- * ============================================================================
- * 5. UTILIDADES DE INTERFAZ
- * ============================================================================
- */
-window.ERP_Main = window.ERP_Main || {};
+    window.ERP_Main.toggleTema = function () {
+        const html = document.documentElement;
+        const icon = document.getElementById('icon-theme');
+        const temaActual = html.getAttribute('data-bs-theme');
+        const nuevoTema = temaActual === 'light' ? 'dark' : 'light';
+        html.setAttribute('data-bs-theme', nuevoTema);
+        window.SISTEMA_ERP.temaVisual = nuevoTema;
+        if (icon) {
+            icon.className = nuevoTema === 'dark' ? 'bi bi-brightness-high-fill text-warning' : 'bi bi-moon-stars-fill text-info';
+        }
+    };
 
-window.ERP_Main.toggleTema = function() {
-    const html = document.documentElement;
-    const icon = document.getElementById('icon-theme');
-    const temaActual = html.getAttribute('data-bs-theme');
-    const nuevoTema = temaActual === 'light' ? 'dark' : 'light';
-    html.setAttribute('data-bs-theme', nuevoTema);
-    window.SISTEMA_ERP.temaVisual = nuevoTema;
-    if (icon) {
-        icon.className = nuevoTema === 'dark' ? 'bi bi-brightness-high-fill text-warning' : 'bi bi-moon-stars-fill text-info';
-    }
-};
-
-window.ERP_Main.toggleSidebar = function() {
-    const sidebar = document.getElementById('sys-sidebar');
-    if (sidebar) sidebar.classList.toggle('phantom-collapsed');
-};
+    window.ERP_Main.toggleSidebar = function () {
+        const sidebar = document.getElementById('sys-sidebar');
+        if (sidebar) sidebar.classList.toggle('phantom-collapsed');
+    };
 </script>

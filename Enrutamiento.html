@@ -1,97 +1,100 @@
 <script>
-/**
- * @file S_Enrutamiento.html
- * @description Generador Dinámico de Interfaz y Menú Lateral (Acordeón BS 5.3).
- * @arquitectura Delegación de navegación al Núcleo (navegarA en Scripts_Main).
- */
-
-var Ctrl_Enrutamiento = {
-    meta: {
-        id: 'enrutamiento',
-        titulo: 'Enrutador UI'
-    },
-    estado: { cargado: false },
-    permisosCacheados: ["home"],
-
     /**
-     * @lifecycle Inicialización
+     * @file Enrutamiento.html
+     * @description Generador Dinámico de Interfaz y Menú Lateral (Acordeón BS 5.3).
+     * @arquitectura Delegación de navegación al Núcleo (navegarA en Scripts_Main).
+     * @reparacion [V5.1.0] Hot-Reload de UI y Protección "Need to Know" del Dashboard.
      */
-    init: function() {
-        if (!this.estado.cargado) {
-            this.estado.cargado = true;
-        }
-        // Intentar construir el menú con los permisos actuales en RAM
-        this.construirMenuGenerativo(this.permisosCacheados);
-    },
 
-    /**
-     * @function construirMenuGenerativo
-     * @description Dibuja el sidebar izquierdo evaluando las meta-propiedades de cada controlador.
-     */
-    construirMenuGenerativo: function(permisosUsuario) {
-        // FIX v4.0.0: El nuevo Navbar lateral usa este ID.
-        const contenedorMenu = document.getElementById('spa-nav-menu');
-        
-        if (!contenedorMenu || !window.SISTEMA_ERP || !window.SISTEMA_ERP.modulos) {
-            console.warn("[UI] Contenedor de menú 'spa-nav-menu' no encontrado o módulos no cargados.");
-            return;
-        }
+    window.Ctrl_Enrutamiento = {
+        meta: {
+            id: 'enrutamiento',
+            version: '5.1.0',
+            titulo: 'Enrutador UI',
+            icono: 'bi-signpost-split',
+            tematica: 'Sistema',
+            seguridad: { permisos: [], nivel_acceso: 0 }
+        },
 
-        // Cachear permisos para el ciclo de vida
-        this.permisosCacheados = permisosUsuario || [];
-        const esSuperAdmin = this.permisosCacheados.includes('*');
-        const modulosPorTematica = {};
+        estado: { cargado: false },
+        permisosCacheados: ["home"],
 
-        // 1. Clasificar módulos autorizados
-        Object.values(window.SISTEMA_ERP.modulos).forEach(mod => {
-            const reqPermisos = (mod.meta && mod.meta.permisos) ? mod.meta.permisos : [];
-            const tieneAcceso = esSuperAdmin || reqPermisos.some(r => this.permisosCacheados.includes(r));
-            
-            if (tieneAcceso && mod.meta && mod.meta.id !== 'home' && mod.meta.id !== 'enrutamiento') {
-                const tema = mod.meta.tematica || 'General';
-                if (!modulosPorTematica[tema]) modulosPorTematica[tema] = [];
-                modulosPorTematica[tema].push(mod.meta);
+        init: function () {
+            if (!this.estado.cargado) {
+                this.estado.cargado = true;
             }
-        });
+            this.construirMenuGenerativo(this.permisosCacheados);
+        },
 
-        // 2. Construir HTML (Layout BS 5.3 Sidebar Vertical)
-        let htmlMenu = `
+        render: function () {
+            // Meta-controlador en línea. (Render Bypass)
+        },
+
+        construirMenuGenerativo: function (permisosUsuario) {
+            const contenedorMenu = document.getElementById('spa-nav-menu');
+
+            if (!contenedorMenu || !window.SISTEMA_ERP || !window.SISTEMA_ERP.modulos) return;
+
+            this.permisosCacheados = permisosUsuario || [];
+            const esSuperAdmin = this.permisosCacheados.includes('*');
+            const modulosPorTematica = {};
+
+            // 1. Clasificar módulos autorizados
+            Object.values(window.SISTEMA_ERP.modulos).forEach(mod => {
+                const reqPermisos = (mod.meta && mod.meta.seguridad && mod.meta.seguridad.permisos)
+                    ? mod.meta.seguridad.permisos
+                    : ((mod.meta && mod.meta.permisos) ? mod.meta.permisos : []);
+
+                const tieneAcceso = esSuperAdmin || reqPermisos.some(r => this.permisosCacheados.includes(r));
+
+                if (tieneAcceso && mod.meta && mod.meta.id !== 'home' && mod.meta.id !== 'enrutamiento' && mod.meta.id !== 'sesion') {
+                    const tema = mod.meta.tematica || 'General';
+                    if (!modulosPorTematica[tema]) modulosPorTematica[tema] = [];
+                    modulosPorTematica[tema].push(mod.meta);
+                }
+            });
+
+            // 2. Construir HTML
+            let htmlMenu = '';
+
+            // 🚀 FIX V5.1.0: Protección "Need to Know" para el Dashboard
+            if (esSuperAdmin || this.permisosCacheados.includes('home')) {
+                htmlMenu += `
             <li class="nav-item">
                 <a class="nav-link text-white d-flex align-items-center py-2" href="#" onclick="navegarA('home', event)">
                     <i class="bi bi-speedometer2 me-3 fs-5"></i> Dashboard
                 </a>
             </li>`;
+            }
 
-        for (const [nombreTematica, modulos] of Object.entries(modulosPorTematica)) {
-            const idCollapse = `colapsable-${nombreTematica.replace(/\s+/g, '')}`;
-            
-            let itemsHtml = '';
-            modulos.forEach(mod => {
-                // Los botones inyectan navegarA() que reside en Scripts_Main
-                itemsHtml += `
-                    <li class="nav-item">
-                        <a class="nav-link text-white opacity-75 d-flex align-items-center py-2 ps-4 small" href="#" onclick="navegarA('${mod.id}', event)">
-                            <i class="bi ${mod.icono || 'bi-circle'} me-2"></i> ${mod.titulo}
-                        </a>
-                    </li>`;
-            });
+            for (const [nombreTematica, modulos] of Object.entries(modulosPorTematica)) {
+                const idCollapse = `colapsable-${nombreTematica.replace(/\s+/g, '')}`;
 
-            htmlMenu += `
+                let itemsHtml = '';
+                modulos.forEach(mod => {
+                    itemsHtml += `
                 <li class="nav-item">
-                  <a class="nav-link text-white d-flex align-items-center justify-content-between py-2 w-100" data-bs-toggle="collapse" href="#${idCollapse}" role="button" aria-expanded="false" aria-controls="${idCollapse}">
-                    <div><i class="bi ${modulos[0].iconoTematica || 'bi-folder2-open'} me-3 fs-5"></i> ${nombreTematica}</div>
-                    <i class="bi bi-chevron-down small opacity-50"></i>
-                  </a>
-                  <div class="collapse bg-dark border-start border-secondary ms-3" id="${idCollapse}">
-                    <ul class="nav flex-column mb-0">
-                      ${itemsHtml}
-                    </ul>
-                  </div>
+                    <a class="nav-link text-white opacity-75 d-flex align-items-center py-2 ps-4 small" href="#" onclick="navegarA('${mod.id}', event)">
+                        <i class="bi ${mod.icono || 'bi-circle'} me-2"></i> ${mod.titulo}
+                    </a>
                 </li>`;
+                });
+
+                htmlMenu += `
+            <li class="nav-item">
+              <a class="nav-link text-white d-flex align-items-center justify-content-between py-2 w-100" data-bs-toggle="collapse" href="#${idCollapse}" role="button" aria-expanded="false" aria-controls="${idCollapse}">
+                <div><i class="bi ${modulos[0].iconoTematica || 'bi-folder2-open'} me-3 fs-5"></i> ${nombreTematica}</div>
+                <i class="bi bi-chevron-down small opacity-50"></i>
+              </a>
+              <div class="collapse bg-dark border-start border-secondary ms-3" id="${idCollapse}">
+                <ul class="nav flex-column mb-0">
+                  ${itemsHtml}
+                </ul>
+              </div>
+            </li>`;
+            }
+
+            contenedorMenu.innerHTML = htmlMenu;
         }
-        
-        // 3. Inyección en el DOM
-        contenedorMenu.innerHTML = htmlMenu;
-    }
-};
+    };
 </script>
