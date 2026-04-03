@@ -1,16 +1,20 @@
-<section id="view-seguridad" class="spa-view container-fluid p-0">
-    <div class="d-flex justify-content-between align-items-center mb-4 pt-3 px-3">
-        <div>
-            <h4 class="fw-bold mb-0 text-primary">Gestión de Seguridad</h4>
-            <p class="text-muted small">Control de identidades y niveles de acceso institucional.</p>
-        </div>
-        <div id="botones-accion-seguridad">
+<div id="view-seguridad" class="spa-view d-none container-fluid p-0">
+
+    <div class="row animate__animated animate__fadeIn">
+        <div class="col-12 d-flex justify-content-between align-items-center mb-4 pt-3 px-3">
+            <div>
+                <h4 class="fw-bold mb-0 text-primary">Gestión de Seguridad</h4>
+                <p class="text-muted small mb-0">Control de identidades y niveles de acceso institucional.</p>
             </div>
+            <div id="botones-accion-seguridad">
+            </div>
+        </div>
     </div>
 
     <ul class="nav nav-tabs mb-4 px-3 border-bottom-0" id="securityTabs">
         <li class="nav-item">
-            <a class="nav-link active border-primary border-bottom border-3 fw-bold text-dark" id="tab-usuarios" href="#" onclick="Ctrl_Seguridad.cambiarPestana('usuarios')">
+            <a class="nav-link active border-primary border-bottom border-3 fw-bold text-dark" id="tab-usuarios"
+                href="#" onclick="Ctrl_Seguridad.cambiarPestana('usuarios')">
                 <i class="bi bi-people me-2"></i>Usuarios
             </a>
         </li>
@@ -21,8 +25,10 @@
         </li>
     </ul>
 
-    <div class="px-3 pb-5" style="contain: content; min-height: 200px;">
+    <div class="px-3 pb-5 animate__animated animate__fadeInUp" style="contain: content; min-height: 200px;">
         <div id="contenedor-tabla-seguridad">
-            </div>
+        </div>
     </div>
-</section>
+
+    <div id="v-seguridad-modales"></div>
+</div>

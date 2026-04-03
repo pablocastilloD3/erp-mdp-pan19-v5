@@ -1,33 +1,36 @@
 /**
-* @file Core.gs
-* @description Punto de entrada HTTP y Motor Backend URS-28. v5.0.0
-* @arquitectura Memory-First / Única Fuente de Verdad / Escritura Universal
-* @cumplimiento ISO 22000 / SII Chile (Trazabilidad Forense SHA-256)
-*/
+ * @file Core.gs
+ * @description Punto de entrada HTTP y Motor Backend URS-28. v6.0.0
+ * @arquitectura Memory-First / Única Fuente de Verdad / Escritura Universal
+ * @cumplimiento ISO 22000 / SII Chile (Trazabilidad Forense SHA-256)
+ * * @reparacion [A2] registrarLogInterno unificada — eliminada declaración duplicada.
+ * @reparacion [A3] w_verificarIntegridadLogs — migrada de índices hardcodeados a Exploración Activa.
+ * @reparacion [NUEVO] UTIL_ExploradorCabeceras — Motor centralizado de descubrimiento de columnas.
+ * @reparacion [NUEVO] LLAVES_PRIMARIAS en w_EjecutarTransaccionSegura — PK por nombre, no por posición.
+ */
 
 /**
-* ============================================================================
-* 0. DESPLIEGUE HTTP (FRONTEND SERVING)
-* ============================================================================
-*/
+ * ============================================================================
+ * 0. DESPLIEGUE HTTP (FRONTEND SERVING)
+ * ============================================================================
+ */
 function doGet(e) {
   try {
-    const template = HtmlService.createTemplateFromFile('Index');
-    template.APP_VERSION = (typeof CONFIG !== 'undefined' && CONFIG.VERSION) ? CONFIG.VERSION : "4.0.0";
-   
+    var template = HtmlService.createTemplateFromFile('Index');
+    template.APP_VERSION = (typeof CONFIG !== 'undefined' && CONFIG.VERSION) ? CONFIG.VERSION : "5.0.0";
+
     return template.evaluate()
       .setTitle(CONFIG.APP_NAME || "ERP MDP - PAN19")
       .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
       .addMetaTag('viewport', 'width=device-width, initial-scale=1');
   } catch (error) {
     console.error("[PGA] Fallo Crítico en doGet:", error);
-    return HtmlService.createHtmlOutput(`
-      <body style="background:#1a1a1a;color:white;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh">
-        <div style="border:1px solid red;padding:2rem;border-radius:1rem;background:#000">
-          <h2 style="color:red">⚠️ Error 500: Núcleo Detenido</h2>
-          <code>${error.message}</code>
-        </div>
-      </body>`);
+    return HtmlService.createHtmlOutput(
+      '<body style="background:#1a1a1a;color:white;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh">'
+      + '<div style="border:1px solid red;padding:2rem;border-radius:1rem;background:#000">'
+      + '<h2 style="color:red">⚠️ Error 500: Núcleo Detenido</h2>'
+      + '<code>' + error.message + '</code>'
+      + '</div></body>');
   }
 }
 
@@ -35,46 +38,66 @@ function include(filename) {
   try {
     return HtmlService.createTemplateFromFile(filename).evaluate().getContent();
   } catch (error) {
-    console.error(`[PGA] Error crítico al inyectar módulo: ${filename}`, error);
-    return ``;
+    console.error('[PGA] Error crítico al inyectar módulo: ' + filename, error);
+    return '';
   }
 }
 
 /**
-* ============================================================================
-* 1. GUARDIÁN ZERO TRUST (RBAC EN VIVO)
-* ============================================================================
-*/
+ * ============================================================================
+ * 0.5. UTILIDAD DE EXPLORACIÓN ACTIVA DE CABECERAS
+ * ============================================================================
+ * @function UTIL_ExploradorCabeceras
+ * @description Lee la fila de cabeceras de una hoja física y retorna un mapa
+ * dinámico { NOMBRE_COLUMNA: índice_entero }. Reemplaza toda asunción posicional.
+ * @param {Sheet} sheet - Objeto Sheet de Google Sheets
+ * @returns {Object} Mapa de exploración. Ej: { 'ID_LOG': 0, 'TIMESTAMP': 1, ... }
+ */
+function UTIL_ExploradorCabeceras(sheet) {
+  var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  var mapa = {};
+  headers.forEach(function (h, i) {
+    var nombre = String(h || '').trim().toUpperCase();
+    if (nombre) mapa[nombre] = i;
+  });
+  return mapa;
+}
+
+/**
+ * ============================================================================
+ * 1. GUARDIÁN ZERO TRUST (RBAC EN VIVO)
+ * ============================================================================
+ */
 function w_verificarEstadoSesion(moduloRequerido) {
   try {
-    const email = Session.getActiveUser().getEmail();
+    var email = Session.getActiveUser().getEmail();
     if (!email) return false;
 
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const sheetUsers = ss.getSheetByName(CONFIG.DB.USUARIOS);
-    const dataUsers = sheetUsers.getDataRange().getValues();
-    const headUsers = dataUsers[0].map(h => String(h).trim().toUpperCase());
-    
-    const idxEmail = headUsers.indexOf('EMAIL');
-    const idxStatus = headUsers.indexOf('STATUS');
-    const idxRol = headUsers.indexOf('NIVEL_ACCESO');
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheetUsers = ss.getSheetByName(CONFIG.DB.USUARIOS);
+    var dataUsers = sheetUsers.getDataRange().getValues();
+    var headUsers = dataUsers[0].map(function (h) { return String(h).trim().toUpperCase(); });
 
-    let userRow = dataUsers.find(r => r[idxEmail] === email);
+    var idxEmail = headUsers.indexOf('EMAIL');
+    var idxStatus = headUsers.indexOf('STATUS');
+    var idxRol = headUsers.indexOf('NIVEL_ACCESO');
+
+    var userRow = dataUsers.find(function (r) { return r[idxEmail] === email; });
     if (!userRow || userRow[idxStatus] !== 'ACTIVO') return false;
 
     if (!moduloRequerido) return true;
 
     // Validación de Permisos (Matriz de Roles)
-    const sheetRoles = ss.getSheetByName(CONFIG.DB.ROLES);
-    const dataRoles = sheetRoles.getDataRange().getValues();
-    const headRoles = dataRoles[0].map(h => String(h).trim().toUpperCase());
-    const idxIdRol = headRoles.indexOf('ID_ROL');
-    const idxPermisos = headRoles.indexOf('PERMISOS_JSON');
+    var sheetRoles = ss.getSheetByName(CONFIG.DB.ROLES);
+    var dataRoles = sheetRoles.getDataRange().getValues();
+    var headRoles = dataRoles[0].map(function (h) { return String(h).trim().toUpperCase(); });
+    var idxIdRol = headRoles.indexOf('ID_ROL');
+    var idxPermisos = headRoles.indexOf('PERMISOS_JSON');
 
-    const rolRow = dataRoles.find(r => String(r[idxIdRol]) === String(userRow[idxRol]));
+    var rolRow = dataRoles.find(function (r) { return String(r[idxIdRol]) === String(userRow[idxRol]); });
     if (!rolRow) return false;
 
-    const permisosArr = JSON.parse(rolRow[idxPermisos] || '[]');
+    var permisosArr = JSON.parse(rolRow[idxPermisos] || '[]');
     return permisosArr.includes('*') || permisosArr.includes(moduloRequerido);
   } catch (e) {
     console.error("❌ Error en Guardián Backend:", e);
@@ -83,58 +106,76 @@ function w_verificarEstadoSesion(moduloRequerido) {
 }
 
 /**
-* ============================================================================
-* 2. MOTOR DE ESCRITURA UNIVERSAL Y DIFERENCIAS (DIFF ENGINE)
-* ============================================================================
-*/
+ * ============================================================================
+ * 2. MOTOR DE ESCRITURA UNIVERSAL Y DIFERENCIAS (DIFF ENGINE)
+ * ============================================================================
+ */
 
 /**
  * @function w_EjecutarTransaccionSegura
- * @description Motor Universal Calibrado para cualquier Llave Primaria (ID o PARAM_KEY)
- * @param {string} idTablaConfig - ID de tabla en CONFIG.DB
+ * @description Motor Universal v6.0.0 — Exploración Activa de Llave Primaria.
+ * Elimina la heurística posicional cabeceras[0] y usa CONFIG.LLAVES_PRIMARIAS.
+ * @param {string} idTablaConfig - ID de tabla en CONFIG.DB (ej: 'USUARIOS', 'ROLES')
  * @param {string} idRegistro - Valor de la llave a buscar (o 'NUEVO')
  * @param {Object} nuevosDatos - Datos a escribir
  * @param {string} ipCliente - IP capturada desde el frontend
  */
 function w_EjecutarTransaccionSegura(idTablaConfig, idRegistro, nuevosDatos, ipCliente) {
-  const LOCK = LockService.getScriptLock();
+  var LOCK = LockService.getScriptLock();
   try {
     if (!w_verificarEstadoSesion()) {
       return JSON.stringify({ error: true, tipo: 'FATAL_AUTH', mensaje: 'Sesión no autorizada.' });
     }
 
     LOCK.waitLock(15000);
-    const nombreHoja = CONFIG.DB[idTablaConfig];
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const sheet = ss.getSheetByName(nombreHoja);
+    var nombreHoja = CONFIG.DB[idTablaConfig];
+    if (!nombreHoja) {
+      return JSON.stringify({ error: true, message: 'Tabla no registrada en CONFIG.DB: ' + idTablaConfig });
+    }
 
-    const fullData = sheet.getDataRange().getValues();
-    const cabeceras = fullData[0].map(h => String(h).trim().toUpperCase());
-    
-    // 🚀 NO-HEURÍSTICA: La llave es la columna 0, se llame como se llame.
-    const nombreLlavePrimaria = cabeceras[0]; 
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheet = ss.getSheetByName(nombreHoja);
+    if (!sheet) {
+      return JSON.stringify({ error: true, message: 'Hoja no encontrada: ' + nombreHoja });
+    }
 
-    let filaIndex = -1;
-    let datosAnteriores = {};
+    var fullData = sheet.getDataRange().getValues();
+    var cabeceras = fullData[0].map(function (h) { return String(h).trim().toUpperCase(); });
 
-    // Búsqueda proactiva por la Llave Primaria definida en la hoja
+    // ═══ EXPLORACIÓN ACTIVA DE LLAVE PRIMARIA ═══
+    var nombreLlavePrimaria = (CONFIG.LLAVES_PRIMARIAS && CONFIG.LLAVES_PRIMARIAS[idTablaConfig])
+      ? CONFIG.LLAVES_PRIMARIAS[idTablaConfig]
+      : cabeceras[0]; // Fallback conservador
+
+    var idxLlave = cabeceras.indexOf(nombreLlavePrimaria);
+    if (idxLlave === -1) {
+      return JSON.stringify({
+        error: true,
+        message: 'Llave primaria "' + nombreLlavePrimaria + '" no encontrada en hoja ' + nombreHoja
+      });
+    }
+
+    var filaIndex = -1;
+    var datosAnteriores = {};
+
+    // Búsqueda por Llave Primaria descubierta
     if (idRegistro !== 'NUEVO') {
-      for (let i = 1; i < fullData.length; i++) {
-        if (String(fullData[i][0]) === String(idRegistro)) {
+      for (var i = 1; i < fullData.length; i++) {
+        if (String(fullData[i][idxLlave]) === String(idRegistro)) {
           filaIndex = i + 1;
-          cabeceras.forEach((h, idx) => { datosAnteriores[h] = fullData[i][idx]; });
+          cabeceras.forEach(function (h, idx) { datosAnteriores[h] = fullData[i][idx]; });
           break;
         }
       }
     }
 
     // DIFF ENGINE
-    const diff = { anterior: {}, nuevo: {} };
-    let hayCambios = false;
-    cabeceras.forEach(h => {
+    var diff = { anterior: {}, nuevo: {} };
+    var hayCambios = false;
+    cabeceras.forEach(function (h) {
       if (nuevosDatos.hasOwnProperty(h)) {
-        const valViejo = String(datosAnteriores[h] || "");
-        const valNuevo = String(nuevosDatos[h] || "");
+        var valViejo = String(datosAnteriores[h] || '');
+        var valNuevo = String(nuevosDatos[h] || '');
         if (valViejo !== valNuevo) {
           diff.anterior[h] = valViejo;
           diff.nuevo[h] = valNuevo;
@@ -146,20 +187,36 @@ function w_EjecutarTransaccionSegura(idTablaConfig, idRegistro, nuevosDatos, ipC
     if (!hayCambios && idRegistro !== 'NUEVO') return JSON.stringify({ success: true, noChange: true });
 
     // CONSTRUCCIÓN DE FILA
-    const filaFinal = cabeceras.map(h => {
-      if (h === 'TIMESTAMP_UPDATE') return new Date().toISOString();
-      if (h === 'USER_UPDATER') return Session.getActiveUser().getEmail();
-      if (h === 'TIMESTAMP_CREATE' && idRegistro === 'NUEVO') return new Date().toISOString();
-      if (h === 'USER_CREATOR' && idRegistro === 'NUEVO') return Session.getActiveUser().getEmail();
-      return nuevosDatos.hasOwnProperty(h) ? nuevosDatos[h] : (datosAnteriores[h] || "");
+    var emailActual = Session.getActiveUser().getEmail();
+    var timestampActual = new Date().toISOString();
+
+    var filaFinal = cabeceras.map(function (h) {
+      if (h === 'TIMESTAMP_UPDATE') return timestampActual;
+      if (h === 'USER_UPDATER') return emailActual;
+      if (h === 'TIMESTAMP_CREATE' && idRegistro === 'NUEVO') return timestampActual;
+      if (h === 'USER_CREATOR' && idRegistro === 'NUEVO') return emailActual;
+      return nuevosDatos.hasOwnProperty(h) ? nuevosDatos[h] : (datosAnteriores[h] || '');
     });
 
     // ESCRITURA
     if (idRegistro === 'NUEVO') {
       sheet.appendRow(filaFinal);
-    } else {
+    } else if (filaIndex > 0) {
       sheet.getRange(filaIndex, 1, 1, cabeceras.length).setValues([filaFinal]);
-    };
+    } else {
+      return JSON.stringify({ error: true, message: 'Registro no encontrado: ' + idRegistro });
+    }
+
+    // AUDITORÍA AUTOMÁTICA
+    registrarLogInterno(
+      idRegistro === 'NUEVO' ? 'CREATE' : 'UPDATE',
+      idTablaConfig,
+      idRegistro === 'NUEVO' ? (nuevosDatos[nombreLlavePrimaria] || 'AUTO') : idRegistro,
+      JSON.stringify(diff.anterior),
+      JSON.stringify(diff.nuevo),
+      'Transacción segura via Motor Universal v6.0.0',
+      ipCliente || 'MOTOR_INTERNO'
+    );
 
     return JSON.stringify({ success: true, diff: diff });
   } catch (e) {
@@ -169,72 +226,30 @@ function w_EjecutarTransaccionSegura(idTablaConfig, idRegistro, nuevosDatos, ipC
   }
 }
 
-// Actualización de registrarLogInterno para aceptar la IP enviada
-function registrarLogInterno(accion, modulo, idEntidad, anterior, nuevo, detalles, ipAddress) {
-  try {
-    const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONFIG.DB.AUDIT_LOG);
-    if (!sheet) return;
-
-    const lastRow = sheet.getLastRow();
-    const U = CONFIG.URS_AUDIT;
-    const row = [];
-    
-    // 1. Eslabón de la cadena
-    let hashPrevio = "GENESIS_BLOCK";
-    if (lastRow > 1) {
-      hashPrevio = sheet.getRange(lastRow, U.HASH_RECORD + 1).getValue() || "EMPTY_PREV";
-    }
-
-    // 2. Validación de IP: Si no viene del cliente, marcamos error de origen
-    const ipFinal = (ipAddress && ipAddress !== "0.0.0.0") ? ipAddress : "ORIGIN_NOT_CAPTURED";
-
-    row[U.ID_LOG]         = Utilities.getUuid();
-    row[U.TIMESTAMP]      = new Date().toISOString();
-    row[U.USER_EMAIL]     = Session.getActiveUser().getEmail();
-    row[U.ACTION_TYPE]    = accion;
-    row[U.MODULO]         = modulo;
-    row[U.ENTIDAD_ID]     = idEntidad;
-    row[U.VALOR_ANTERIOR] = anterior;
-    row[U.VALOR_NUEVO]    = nuevo;
-    row[U.IP_ADDRESS]     = ipFinal; // 🚀 AQUÍ SE GUARDA LA IP REAL
-    row[U.DETALLES]       = detalles;
-    row[U.HASH_PREVIOUS]  = hashPrevio;
-
-    const rawContent = row[U.TIMESTAMP] + row[U.USER_EMAIL] + accion + idEntidad + nuevo + hashPrevio;
-    const signature  = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, rawContent, Utilities.Charset.UTF_8);
-    row[U.HASH_RECORD]    = signature.map(byte => ('0' + (byte & 0xFF).toString(16)).slice(-2)).join('');
-
-    sheet.appendRow(row);
-  } catch (e) {
-    console.error("Error en Auditoría:", e);
-  }
-}
-
 /**
-* ============================================================================
-* 3. MOTOR DE HIDRATACIÓN (BATCH GET SERVICE)
-* ============================================================================
-*/
+ * ============================================================================
+ * 3. MOTOR DE HIDRATACIÓN (BATCH GET SERVICE)
+ * ============================================================================
+ */
 function getDatabaseCompleta() {
-  const LOCK = LockService.getScriptLock();
+  var LOCK = LockService.getScriptLock();
   try {
     LOCK.waitLock(5000);
-    const userEmail = Session.getActiveUser().getEmail();
+    var userEmail = Session.getActiveUser().getEmail();
     if (!userEmail) throw new Error("Sesión Inválida");
 
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const spreadsheetId = ss.getId();
-    const nombresPestañas = Object.values(CONFIG.DB);
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var spreadsheetId = ss.getId();
+    var nombresPestañas = Object.values(CONFIG.DB);
 
-    // Uso del servicio Sheets para lectura ultra-rápida
-    const response = Sheets.Spreadsheets.Values.batchGet(spreadsheetId, {
+    var response = Sheets.Spreadsheets.Values.batchGet(spreadsheetId, {
       ranges: nombresPestañas,
       valueRenderOption: 'UNFORMATTED_VALUE',
       dateTimeRenderOption: 'FORMATTED_STRING'
     });
 
-    const dbSaneada = {};
-    response.valueRanges.forEach((rangoData, index) => {
+    var dbSaneada = {};
+    response.valueRanges.forEach(function (rangoData, index) {
       dbSaneada[nombresPestañas[index]] = rangoData.values || [];
     });
 
@@ -247,61 +262,166 @@ function getDatabaseCompleta() {
 }
 
 /**
-* ============================================================================
-* 4. AUDITORÍA FORENSE (ISO 22000)
-* ============================================================================
+ * ============================================================================
+ * 4. AUDITORÍA FORENSE — VERSIÓN CANÓNICA ÚNICA (ISO 22000)
+ * ============================================================================
  * @function registrarLogInterno
- * @description Escribe en SYS_AUDIT_LOG con encadenamiento de Hash (Forensic Chain)
+ * @description Escritura forense con encadenamiento SHA-256 y Exploración Activa.
+ * v6.0.0 — Versión unificada. Elimina duplicación anterior (reparación A2).
+ * Todos los accesos a columnas se resuelven por nombre, no por índice fijo.
+ *
+ * @param {string} accion - Tipo de acción (AUTH_SUCCESS, CREATE, UPDATE, etc.)
+ * @param {string} modulo - Módulo origen (SEGURIDAD, COMPRAS, etc.)
+ * @param {string} idEntidad - ID del registro afectado
+ * @param {string} anterior - Valor anterior (JSON string o texto)
+ * @param {string} nuevo - Valor nuevo (JSON string o texto)
+ * @param {string} detalles - Texto libre descriptivo
+ * @param {string} ipAddress - IP del cliente (capturada en frontend)
+ * @returns {boolean} true si se registró correctamente
  */
 function registrarLogInterno(accion, modulo, idEntidad, anterior, nuevo, detalles, ipAddress) {
   try {
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const sheet = ss.getSheetByName('SYS_AUDIT_LOG');
-    if (!sheet) return;
-
-    const lastRow = sheet.getLastRow();
-    // Mapeo manual si CONFIG.URS_AUDIT no está disponible o para asegurar orden
-    // ID_LOG[0], TIMESTAMP[1], USER_EMAIL[2], ACTION_TYPE[3], MODULO[4], ENTIDAD_ID[5], 
-    // VALOR_ANTERIOR[6], VALOR_NUEVO[7], IP_ADDRESS[8], DETALLES[9], HASH_RECORD[10], HASH_PREVIOUS[11]
-
-    let hashPrevio = "GENESIS_BLOCK";
-    if (lastRow > 1) {
-      // Asumimos que HASH_RECORD es la columna 11 (K) -> índice 10
-      hashPrevio = sheet.getRange(lastRow, 11).getValue() || "EMPTY_PREV";
+    var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONFIG.DB.AUDIT_LOG);
+    if (!sheet) {
+      console.error('❌ [Auditoría] Hoja ' + CONFIG.DB.AUDIT_LOG + ' no encontrada.');
+      return false;
     }
 
-    const ipFinal = (ipAddress && ipAddress !== "0.0.0.0" && ipAddress !== "CAPTURANDO...") 
-                    ? ipAddress : "ORIGIN_NOT_CAPTURED";
+    // ═══ EXPLORACIÓN ACTIVA ═══
+    var C = UTIL_ExploradorCabeceras(sheet);
 
-    const row = [];
-    row[0]  = Utilities.getUuid();
-    row[1]  = new Date().toISOString();
-    row[2]  = Session.getActiveUser().getEmail() || "SISTEMA";
-    row[3]  = accion;
-    row[4]  = modulo;
-    row[5]  = idEntidad;
-    row[6]  = anterior || "N/A";
-    row[7]  = nuevo || "N/A";
-    row[8]  = ipFinal; 
-    row[9]  = detalles;
-    row[11] = hashPrevio;
+    // Validación estructural
+    var columnasRequeridas = [
+      'ID_LOG', 'TIMESTAMP', 'USER_EMAIL', 'ACTION_TYPE',
+      'MODULO', 'ENTIDAD_ID', 'VALOR_ANTERIOR', 'VALOR_NUEVO',
+      'IP_ADDRESS', 'DETALLES', 'HASH_RECORD', 'HASH_PREVIOUS'
+    ];
 
-    // 🔐 GENERACIÓN DE FIRMA DIGITAL
-    const rawContent = row[1] + row[2] + accion + idEntidad + (nuevo || "N/A") + hashPrevio;
-    const signature  = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, rawContent, Utilities.Charset.UTF_8);
-    row[10] = signature.map(byte => ('0' + (byte & 0xFF).toString(16)).slice(-2)).join('');
+    var faltantes = columnasRequeridas.filter(function (col) { return C[col] === undefined; });
+    if (faltantes.length > 0) {
+      console.error('❌ [Auditoría] Columnas faltantes en ' + CONFIG.DB.AUDIT_LOG + ': ' + faltantes.join(', '));
+      return false;
+    }
+
+    // ═══ ESLABÓN DE CADENA (Hash Previo) ═══
+    var lastRow = sheet.getLastRow();
+    var hashPrevio = 'GENESIS_BLOCK';
+    if (lastRow > 1) {
+      // C.HASH_RECORD es índice base-0; getRange usa base-1
+      hashPrevio = sheet.getRange(lastRow, C.HASH_RECORD + 1).getValue() || 'EMPTY_PREV';
+    }
+
+    // ═══ VALIDACIÓN DE IP ═══
+    var ipFinal = (ipAddress && ipAddress !== '0.0.0.0' && ipAddress !== 'CAPTURANDO...')
+      ? ipAddress : 'ORIGIN_NOT_CAPTURED';
+
+    // ═══ CONSTRUCCIÓN DE FILA POR EXPLORACIÓN ═══
+    var totalCols = sheet.getLastColumn();
+    var row = new Array(totalCols).fill('');
+
+    row[C.ID_LOG] = Utilities.getUuid();
+    row[C.TIMESTAMP] = new Date().toISOString();
+    row[C.USER_EMAIL] = Session.getActiveUser().getEmail() || 'SISTEMA';
+    row[C.ACTION_TYPE] = accion;
+    row[C.MODULO] = modulo;
+    row[C.ENTIDAD_ID] = idEntidad;
+    row[C.VALOR_ANTERIOR] = anterior || 'N/A';
+    row[C.VALOR_NUEVO] = nuevo || 'N/A';
+    row[C.IP_ADDRESS] = ipFinal;
+    row[C.DETALLES] = detalles;
+    row[C.HASH_PREVIOUS] = hashPrevio;
+
+    // ═══ FIRMA DIGITAL SHA-256 ═══
+    var rawContent = row[C.TIMESTAMP] + row[C.USER_EMAIL] + accion + idEntidad + (nuevo || 'N/A') + hashPrevio;
+    var signature = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, rawContent, Utilities.Charset.UTF_8);
+    row[C.HASH_RECORD] = signature.map(function (byte) { return ('0' + (byte & 0xFF).toString(16)).slice(-2); }).join('');
 
     sheet.appendRow(row);
     return true;
   } catch (e) {
-    console.error("Error en Auditoría:", e);
+    console.error('❌ [Auditoría] Error en registrarLogInterno:', e);
     return false;
   }
 }
 
-// PUENTES PARA EL FRONTEND
+/**
+ * ============================================================================
+ * 5. VERIFICACIÓN DE INTEGRIDAD FORENSE (SHA-256 Chain Validation)
+ * ============================================================================
+ * @function w_verificarIntegridadLogs
+ * @description Recorre SYS_AUDIT_LOG y verifica el encadenamiento de hashes.
+ * v6.0.0 — Exploración Activa de cabeceras. Corrige anomalía A3.
+ * @returns {string} JSON con resultado de integridad
+ */
+function w_verificarIntegridadLogs() {
+  try {
+    var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONFIG.DB.AUDIT_LOG);
+    var values = sheet.getDataRange().getValues();
+    if (values.length < 2) return JSON.stringify({ integro: true, analizados: 0 });
+
+    // ═══ EXPLORACIÓN ACTIVA DESDE FILA 0 ═══
+    var headers = values[0];
+    var C = {};
+    headers.forEach(function (h, i) {
+      var nombre = String(h || '').trim().toUpperCase();
+      if (nombre) C[nombre] = i;
+    });
+
+    // Validación estructural
+    var requeridas = ['ID_LOG', 'TIMESTAMP', 'USER_EMAIL', 'ACTION_TYPE',
+      'ENTIDAD_ID', 'VALOR_NUEVO', 'HASH_RECORD', 'HASH_PREVIOUS'];
+    var faltantes = requeridas.filter(function (col) { return C[col] === undefined; });
+    if (faltantes.length > 0) {
+      return JSON.stringify({ error: true, message: 'Columnas faltantes: ' + faltantes.join(', ') });
+    }
+
+    // ═══ RECORRIDO DE CADENA ═══
+    var hashPrevio = 'GENESIS_BLOCK';
+
+    for (var i = 1; i < values.length; i++) {
+      var r = values[i];
+      var hashAlmacenado = r[C.HASH_RECORD];
+
+      // Recalcular firma con los mismos campos que usa registrarLogInterno
+      var content = String(r[C.TIMESTAMP])
+        + String(r[C.USER_EMAIL])
+        + String(r[C.ACTION_TYPE])
+        + String(r[C.ENTIDAD_ID])
+        + String(r[C.VALOR_NUEVO])
+        + hashPrevio;
+
+      var signature = Utilities.computeDigest(
+        Utilities.DigestAlgorithm.SHA_256, content, Utilities.Charset.UTF_8
+      );
+      var hashCalculado = signature.map(function (byte) { return ('0' + (byte & 0xFF).toString(16)).slice(-2); }).join('');
+
+      if (hashCalculado !== hashAlmacenado) {
+        return JSON.stringify({
+          integro: false,
+          idRuptura: r[C.ID_LOG],
+          fila: i + 1,
+          hashEsperado: hashCalculado,
+          hashEncontrado: hashAlmacenado
+        });
+      }
+
+      hashPrevio = hashAlmacenado;
+    }
+
+    return JSON.stringify({ integro: true, analizados: values.length - 1 });
+  } catch (e) {
+    return JSON.stringify({ error: true, message: e.message });
+  }
+}
+
+/**
+ * ============================================================================
+ * 6. PUENTES PARA EL FRONTEND
+ * ============================================================================
+ */
 function w_obtenerDataMaestra() { return JSON.parse(getDatabaseCompleta()); }
-function w_getSystemTelemetry() { 
+
+function w_getSystemTelemetry() {
   return JSON.stringify({
     success: true,
     version: CONFIG.VERSION,
@@ -314,48 +434,13 @@ function w_getSystemTelemetry() {
 }
 
 function w_registrarAuditoriaFrontend(acc, mod, id, det, ant, nvo) {
-  // Nota: El frontend puede enviar la IP en el campo 'det' o podemos extraerla de SISTEMA_ERP
-  return registrarLogInterno(acc, mod, id, ant, nvo, det, "FRONTEND_REQUEST");
-}
-
-/**
- * @function w_verificarIntegridadLogs
- * @description Verifica el encadenamiento de hashes SHA-256 en la hoja de auditoría.
- */
-function w_verificarIntegridadLogs() {
-  try {
-    const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("SYS_AUDIT_LOG");
-    const values = sheet.getDataRange().getValues();
-    // Headers: [0]ID_LOG, [1]TIMESTAMP, [2]USER_EMAIL, [3]ACTION_TYPE, [4]MODULO, [5]ENTIDAD_ID, [6]VALOR_ANTERIOR, [7]VALOR_NUEVO, [8]IP_ADDRESS, [9]HASH_RECORD
-    
-    let hashPrevio = "GENESIS_BLOCK";
-    
-    for (let i = 1; i < values.length; i++) {
-      const r = values[i];
-      const hashActual = r[9];
-      
-      // Re-calculamos el hash de la fila
-      const content = r[1] + r[2] + r[3] + r[5] + r[7] + hashPrevio;
-      const signature = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, content, Utilities.Charset.UTF_8);
-      const hashCalculado = signature.map(byte => ('0' + (byte & 0xFF).toString(16)).slice(-2)).join('');
-      
-      if (hashCalculado !== hashActual) {
-        return JSON.stringify({ integro: false, idRuptura: r[0] });
-      }
-      hashPrevio = hashActual;
-    }
-    
-    return JSON.stringify({ integro: true, analizados: values.length - 1 });
-  } catch (e) {
-    return JSON.stringify({ error: true, message: e.message });
-  }
+  return registrarLogInterno(acc, mod, id, ant, nvo, det, 'FRONTEND_REQUEST');
 }
 
 /**
  * @function w_registrarLogForense
- * @description Puente para el módulo S_Sesion. Usa el motor de Hash Interno.
+ * @description Puente para S_Sesion. Redirige al motor SHA-256 canónico.
  */
 function w_registrarLogForense(motivo, modulo, id, detalles, ip) {
-  // 🚀 Redirigimos al motor que sí tiene SHA-256 para no duplicar lógica
-  return registrarLogInterno(motivo, modulo, id, "N/A", "N/A", detalles, ip);
+  return registrarLogInterno(motivo, modulo, id, 'N/A', 'N/A', detalles, ip);
 }

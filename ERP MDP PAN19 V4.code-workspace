@@ -1,0 +1,15 @@
+{
+	"folders": [
+		{
+			"path": "."
+		}
+	],
+	"settings": {
+		"editor.fontSize": 13,
+		"window.zoomLevel": 0.25,
+		"window.zoomPerWindow": true,
+		"chat.fontSize": 14,
+		"audioCues.enabled": "off",
+		"chat.editor.fontSize": 14,
+	}
+}

@@ -1,167 +1,200 @@
 <script>
-/**
- * @file S_Sesion.html
- * @module Sesion
- * @version 20.2.0 - Fix: Handshake síncrono e IP en cierre.
- */
-
-window.Ctrl_Sesion = {
-    meta: {
-        id: 'sesion',
-        titulo: 'Monitor de Seguridad',
-        icono: 'bi-shield-shaded',
-        tipo: 'servicio_sistema' 
-    },
-
-    estado: {
-        timeout_total: 15 * 60 * 1000, 
-        timeout_aviso: 13 * 60 * 1000, 
-        conteo_final: 120,             
-        ip_cliente: 'CAPTURANDO...', // Estado inicial
-        timer_monitor: null,
-        timer_regresivo: null,
-        sesion_activa: false
-    },
-
-    init: function() {
-        console.log("🛡️ [Sesion] Vigilancia URS-28 activada.");
-        this.capturarDatosConexion();
-        this.vincularInteracciones();
-    },
-
     /**
-     * @function capturarDatosConexion
-     * Promesa para asegurar que la IP esté lista antes del handshake.
+     * @file S_Sesion.html
+     * @module Sesion
+     * @version 5.1.0
+     * @arquitectura URS-28 / Memory-First / Zero-Trust
+     * @reparacion [V5.1.0] Absorción de Telemetría UI y creación de Identidad Global.
      */
-    capturarDatosConexion: async function() {
-        try {
-            const r = await fetch('https://api.ipify.org?format=json');
-            const d = await r.json();
-            this.estado.ip_cliente = d.ip;
-            window.SISTEMA_ERP.ipCliente = d.ip;
-            console.log(`🌐 [Sesion] IP Identificada: ${d.ip}`);
-            return d.ip;
-        } catch (e) { 
-            this.estado.ip_cliente = '0.0.0.0'; 
-            return '0.0.0.0';
-        }
-    },
 
-    /**
-     * @function iniciarAutenticacion
-     * 🚀 BLOQUEO DE RED: No inicia hasta confirmar la IP.
-     */
-    iniciarAutenticacion: async function() {
-        if (window.SISTEMA_ERP.authEnProgreso) return;
-        window.SISTEMA_ERP.authEnProgreso = true;
+    window.Ctrl_Sesion = {
+        meta: {
+            id: 'sesion',
+            version: '5.1.0',
+            titulo: 'Monitor de Seguridad',
+            icono: 'bi-shield-shaded',
+            tematica: 'Sistema',
+            seguridad: { permisos: ['*'], nivel_acceso: 1 }
+        },
 
-        // 1. Esperamos la IP obligatoriamente
-        console.log("🌐 [Sesion] Identificando punto de origen...");
-        const ip = await this.capturarDatosConexion(); 
+        estado: {
+            timeout_total: 15 * 60 * 1000,
+            timeout_aviso: 13 * 60 * 1000,
+            ip_cliente: 'CAPTURANDO...',
+            hora_objetivo_aviso: null,
+            hora_objetivo_cierre: null,
+            sesion_activa: false
+        },
 
-        // 2. Ahora sí, validamos identidad enviando la IP
-        console.log(`🛡️ [Sesion] Handshake Zero Trust iniciado con IP: ${ip}`);
+        timers: { conteo: null, heartbeat: null },
 
-        google.script.run
-            .withSuccessHandler(resStr => {
-                window.SISTEMA_ERP.authEnProgreso = false;
-                try {
-                    const res = JSON.parse(resStr);
-                    if (res.authorized) {
-                        this.estado.sesion_activa = true;
-                        window.SISTEMA_ERP.usuarioActual = res.email;
-                        this.reiniciarReloj();
-                        
-                        console.log(`✅ [Sesion] Identidad validada: ${res.email}`);
+        init: function () {
+            console.log("🛡️ [Sesion] Vigilancia URS-28 activada.");
+            this.capturarDatosConexion();
+            this.vincularInteracciones();
+        },
 
-                        // 🚀 CORRECCIÓN: Parsear permisos antes de enviar al resto del sistema
-                        const permisosFinales = JSON.parse(res.matriz_permisos || '[]');
-                        
-                        window.dispatchEvent(new CustomEvent('erp-auth-success', { 
-                            detail: { 
-                                usuario: res.email, 
-                                permisos: permisosFinales,
-                                nombres: res.nombres,
-                                rol: res.nombre_rol
-                            } 
-                        }));
-                    } else { this.pintarPantallaBloqueo(res.status || 'ACCESO DENEGADO'); }
-                } catch (e) { this.pintarPantallaBloqueo('ERROR DE INTEGRIDAD'); }
-            })
-            .withFailureHandler(() => { 
-                window.SISTEMA_ERP.authEnProgreso = false;
-                this.pintarPantallaBloqueo('FALLO DE COMUNICACIÓN'); 
-            })
-            .w_verificarIdentidadZeroTrust(ip); // 👈 ENVIAMOS LA IP AQUÍ
-    },
+        render: function () {
+            console.log("🛡️ [Sesion] Interfaz base cargada.");
+        },
 
-    logout: function() {
-        if (!confirm("¿Desea finalizar su sesión de forma segura?")) return;
-        this.ejecutarCierre('AUTH_LOGOUT');
-    },
+        capturarDatosConexion: async function () {
+            try {
+                const r = await fetch('https://api.ipify.org?format=json');
+                const d = await r.json();
+                this.estado.ip_cliente = d.ip;
+                window.SISTEMA_ERP.ipCliente = d.ip;
+                console.log(`🌐 [Sesion] IP Identificada: ${d.ip}`);
+                return d.ip;
+            } catch (e) {
+                this.estado.ip_cliente = '0.0.0.0';
+                return '0.0.0.0';
+            }
+        },
 
-    vincularInteracciones: function() {
-        const eventos = ['mousedown', 'keypress', 'scroll', 'touchstart'];
-        eventos.forEach(ev => {
-            document.addEventListener(ev, () => {
-                const modal = document.getElementById('modal-sesion-aviso');
-                if (modal && modal.classList.contains('show')) return;
-                if (this.estado.sesion_activa) this.reiniciarReloj();
-            }, true);
-        });
-    },
+        iniciarAutenticacion: async function () {
+            if (window.SISTEMA_ERP.authEnProgreso) return;
+            window.SISTEMA_ERP.authEnProgreso = true;
 
-    reiniciarReloj: function() {
-        if (this.estado.timer_monitor) clearTimeout(this.estado.timer_monitor);
-        this.estado.timer_monitor = setTimeout(() => this.lanzarAviso(), this.estado.timeout_aviso);
-    },
+            console.log("🌐 [Sesion] Identificando punto de origen...");
+            const ip = await this.capturarDatosConexion();
 
-    lanzarAviso: function() {
-        this.estado.conteo_final = 120;
-        this.renderModal(); 
-        const modalEl = document.getElementById('modal-sesion-aviso');
-        const modalBS = bootstrap.Modal.getOrCreateInstance(modalEl);
-        modalBS.show();
+            console.log(`🛡️ [Sesion] Handshake Zero Trust iniciado con IP: ${ip}`);
 
-        if (this.timers.conteo) clearInterval(this.timers.conteo);
-        this.timers.conteo = setInterval(() => {
-            this.estado.conteo_final--;
-            const lbl = document.getElementById('lbl-conteo-sesion');
-            if (lbl) lbl.innerText = this.estado.conteo_final;
-            if (this.estado.conteo_final <= 0) this.ejecutarCierre('SESSION_TIMEOUT');
-        }, 1000);
-    },
+            google.script.run
+                .withSuccessHandler(resStr => {
+                    window.SISTEMA_ERP.authEnProgreso = false;
+                    try {
+                        const res = JSON.parse(resStr);
+                        if (res.authorized) {
+                            this.estado.sesion_activa = true;
+                            window.SISTEMA_ERP.usuarioActual = res.email;
 
-    extenderSesion: function() {
-        clearInterval(this.timers.conteo);
-        this.reiniciarReloj();
-    },
+                            // 🚀 FIX V5.1.0: Creación de Billetera Global (Memory-First)
+                            window.SISTEMA_ERP.identidad = {
+                                email: res.email,
+                                nombre: (res.nombres && res.nombres.trim() !== "") ? res.nombres : res.email,
+                                rol: res.nombre_rol || 'Nivel ' + res.nivel_acceso
+                            };
 
-    /**
-     * @function ejecutarCierre
-     * 🚀 FIX: Aseguramos que la IP y el motivo viajen correctamente.
-     */
-    ejecutarCierre: function(motivo) {
-        console.warn(`🚨 [Sesion] Ejecutando cierre: ${motivo}`);
-        if (this.estado.timer_monitor) clearTimeout(this.estado.timer_monitor);
-        if (this.timers.conteo) clearInterval(this.timers.conteo);
-        
-        this.estado.sesion_activa = false;
-        const ipFinal = this.estado.ip_cliente;
+                            this.reiniciarReloj();
 
-        // Registro Forense: IMPORTANTE verificar que w_registrarLogForense exista en Codigo.gs
-        google.script.run
-            .withSuccessHandler(() => {
-                window.SISTEMA_ERP.datos = {};
-                window.SISTEMA_ERP.usuarioActual = null;
-                this.pintarPantallaBloqueo(motivo);
-            })
-            .w_registrarLogForense(motivo, 'SISTEMA', 'N/A', `Cierre: ${motivo}`, ipFinal);
-    },
+                            // 🚀 FIX V5.1.0: Pintar DOM inmediatamente (Latencia Cero)
+                            this.actualizarTelemetriaUI();
 
-    renderModal: function() {
-        if (document.getElementById('modal-sesion-aviso')) return;
-        const html = `
+                            console.log(`✅ [Sesion] Identidad validada: ${res.email}`);
+
+                            const permisosFinales = JSON.parse(res.matriz_permisos || '[]');
+
+                            window.dispatchEvent(new CustomEvent('erp-auth-success', {
+                                detail: {
+                                    usuario: res.email,
+                                    permisos: permisosFinales,
+                                    nombres: res.nombres,
+                                    rol: res.nombre_rol
+                                }
+                            }));
+                        } else { this.pintarPantallaBloqueo(res.status || 'ACCESO DENEGADO'); }
+                    } catch (e) { this.pintarPantallaBloqueo('ERROR DE INTEGRIDAD'); }
+                })
+                .withFailureHandler(() => {
+                    window.SISTEMA_ERP.authEnProgreso = false;
+                    this.pintarPantallaBloqueo('FALLO DE COMUNICACIÓN');
+                })
+                .w_verificarIdentidadZeroTrust(ip);
+        },
+
+        // 🚀 FIX V5.1.0: Nuevo método inyector de UI migrado desde S_Seguridad
+        actualizarTelemetriaUI: function () {
+            const iden = window.SISTEMA_ERP.identidad;
+            if (!iden) return;
+
+            const mapDOM = [
+                { ids: ['lbl-user-name', 'nav-user-name'], valor: iden.nombre },
+                { ids: ['lbl-user-rol', 'nav-user-rol'], valor: iden.rol },
+                { ids: ['lbl-user-email', 'nav-user-email'], valor: iden.email }
+            ];
+
+            mapDOM.forEach(grupo => {
+                grupo.ids.forEach(id => {
+                    const el = document.getElementById(id);
+                    if (el) el.innerText = grupo.valor;
+                });
+            });
+        },
+
+        logout: function () {
+            if (!confirm("¿Desea finalizar su sesión de forma segura?")) return;
+            this.ejecutarCierre('AUTH_LOGOUT');
+        },
+
+        vincularInteracciones: function () {
+            const eventos = ['mousedown', 'keypress', 'scroll', 'touchstart'];
+            eventos.forEach(ev => {
+                document.addEventListener(ev, () => {
+                    const modal = document.getElementById('modal-sesion-aviso');
+                    if (modal && modal.classList.contains('show')) return;
+                    if (this.estado.sesion_activa) this.reiniciarReloj();
+                }, true);
+            });
+        },
+
+        reiniciarReloj: function () {
+            if (this.timers.heartbeat) clearInterval(this.timers.heartbeat);
+            this.estado.hora_objetivo_aviso = Date.now() + this.estado.timeout_aviso;
+            this.timers.heartbeat = setInterval(() => {
+                if (Date.now() >= this.estado.hora_objetivo_aviso) {
+                    clearInterval(this.timers.heartbeat);
+                    this.lanzarAviso();
+                }
+            }, 1000);
+        },
+
+        lanzarAviso: function () {
+            this.estado.hora_objetivo_cierre = Date.now() + (120 * 1000);
+            this.renderModal();
+            const modalEl = document.getElementById('modal-sesion-aviso');
+            const modalBS = bootstrap.Modal.getOrCreateInstance(modalEl);
+            modalBS.show();
+
+            if (this.timers.conteo) clearInterval(this.timers.conteo);
+            this.timers.conteo = setInterval(() => {
+                let tiempoRestante = Math.ceil((this.estado.hora_objetivo_cierre - Date.now()) / 1000);
+                if (tiempoRestante <= 0) {
+                    tiempoRestante = 0;
+                    this.ejecutarCierre('SESSION_TIMEOUT');
+                }
+                const lbl = document.getElementById('lbl-conteo-sesion');
+                if (lbl) lbl.innerText = tiempoRestante;
+            }, 1000);
+        },
+
+        extenderSesion: function () {
+            if (this.timers.conteo) clearInterval(this.timers.conteo);
+            this.reiniciarReloj();
+        },
+
+        ejecutarCierre: function (motivo) {
+            console.warn(`🚨 [Sesion] Ejecutando cierre: ${motivo}`);
+            if (this.timers.heartbeat) clearInterval(this.timers.heartbeat);
+            if (this.timers.conteo) clearInterval(this.timers.conteo);
+
+            this.estado.sesion_activa = false;
+            const ipFinal = this.estado.ip_cliente;
+
+            google.script.run
+                .withSuccessHandler(() => {
+                    window.SISTEMA_ERP.datos = {};
+                    window.SISTEMA_ERP.identidad = null;
+                    window.SISTEMA_ERP.usuarioActual = null;
+                    this.pintarPantallaBloqueo(motivo);
+                })
+                .w_registrarLogForense(motivo, 'SISTEMA', 'N/A', `Cierre: ${motivo}`, ipFinal);
+        },
+
+        renderModal: function () {
+            if (document.getElementById('modal-sesion-aviso')) return;
+            const html = `
             <div class="modal fade" id="modal-sesion-aviso" data-bs-backdrop="static" tabindex="-1">
                 <div class="modal-dialog modal-dialog-centered">
                     <div class="modal-content border-0 shadow-lg text-center">
@@ -179,11 +212,11 @@ window.Ctrl_Sesion = {
                     </div>
                 </div>
             </div>`;
-        document.body.insertAdjacentHTML('beforeend', html);
-    },
+            document.body.insertAdjacentHTML('beforeend', html);
+        },
 
-    pintarPantallaBloqueo: function(motivo) {
-        document.body.innerHTML = `
+        pintarPantallaBloqueo: function (motivo) {
+            document.body.innerHTML = `
             <div class="d-flex align-items-center justify-content-center vh-100 bg-dark text-white p-4">
                 <div class="text-center p-5 rounded-4 border border-secondary bg-black bg-opacity-25" style="max-width: 450px;">
                     <i class="bi bi-shield-slash text-danger mb-4" style="font-size: 5rem;"></i>
@@ -192,14 +225,6 @@ window.Ctrl_Sesion = {
                     <button class="btn btn-outline-primary rounded-pill px-5 fw-bold mt-4" onclick="location.reload()">RECONECTAR</button>
                 </div>
             </div>`;
-    },
-    
-    timers: { conteo: null } // Contenedor para el intervalo
-};
-
-if (window.ERP_Utils?.ejecutarADC) {
-    window.ERP_Utils.ejecutarADC(window.Ctrl_Sesion);
-} else {
-    window.Ctrl_Sesion.init();
-}
+        }
+    };
 </script>

@@ -1,50 +1,50 @@
 <script>
-/**
- * @file Lib_Factory.html
- * @version 4.8.0 - Soporte Forense y Paginación Dinámica
- */
+    /**
+     * @file Lib_Factory.html
+     * @version 5.0.0 - Soporte Forense y Paginación Dinámica
+     */
 
-window.Factory = {
-    instances: {},
-    modalInstance: null,
+    window.Factory = {
+        instances: {},
+        modalInstance: null,
 
-    // ==========================================
-    // 1. GENERADOR DE TABLAS (ACTUALIZADO)
-    // ==========================================
-    crearTabla: function(id, config) {
-        // Inicialización del estado con soporte para paginación
-        this.instances[id] = {
-            data: config.data || [],
-            columns: config.columns || [],
-            idKey: config.idKey || 'ID_UUID',
-            onEdit: config.onEdit || null,
-            config: {
-                columnasCRUD: config.config?.columnasCRUD !== false, // Default: true
-                pagination: config.config?.pagination || false,
-                rowSelector: config.config?.rowSelector || false,
-                rowsPerPage: parseInt(config.config?.rowsPerPage) || 15
-            },
-            state: {
-                currentPage: 1,
-                rowsPerPage: parseInt(config.config?.rowsPerPage) || 15
-            }
-        };
-        this._renderTabla(id);
-    },
+        // ==========================================
+        // 1. GENERADOR DE TABLAS (ACTUALIZADO)
+        // ==========================================
+        crearTabla: function (id, config) {
+            // Inicialización del estado con soporte para paginación
+            this.instances[id] = {
+                data: config.data || [],
+                columns: config.columns || [],
+                idKey: config.idKey || 'ID_UUID',
+                onEdit: config.onEdit || null,
+                config: {
+                    columnasCRUD: config.config?.columnasCRUD !== false, // Default: true
+                    pagination: config.config?.pagination || false,
+                    rowSelector: config.config?.rowSelector || false,
+                    rowsPerPage: parseInt(config.config?.rowsPerPage) || 15
+                },
+                state: {
+                    currentPage: 1,
+                    rowsPerPage: parseInt(config.config?.rowsPerPage) || 15
+                }
+            };
+            this._renderTabla(id);
+        },
 
-    _renderTabla: function(id) {
-        const inst = this.instances[id];
-        const container = document.getElementById(id);
-        if (!container) return;
+        _renderTabla: function (id) {
+            const inst = this.instances[id];
+            const container = document.getElementById(id);
+            if (!container) return;
 
-        // Lógica de Paginación
-        const totalRows = inst.data.length;
-        const limit = inst.state.rowsPerPage;
-        const totalPages = Math.ceil(totalRows / limit) || 1;
-        const start = (inst.state.currentPage - 1) * limit;
-        const pagedRows = inst.data.slice(start, start + limit);
+            // Lógica de Paginación
+            const totalRows = inst.data.length;
+            const limit = inst.state.rowsPerPage;
+            const totalPages = Math.ceil(totalRows / limit) || 1;
+            const start = (inst.state.currentPage - 1) * limit;
+            const pagedRows = inst.data.slice(start, start + limit);
 
-        let html = `
+            let html = `
             <div class="factory-container border bg-white rounded shadow-sm overflow-hidden">
                 <div class="table-responsive">
                     <table class="table table-hover align-middle mb-0">
@@ -61,17 +61,17 @@ window.Factory = {
                 </div>
                 ${this._renderFooter(id, inst, totalRows, totalPages)}
             </div>`;
-        
-        container.innerHTML = html;
-    },
 
-    _renderRows: function(id, inst, rows) {
-        if (!rows || rows.length === 0) {
-            const span = inst.config.columnasCRUD ? inst.columns.length + 1 : inst.columns.length;
-            return `<tr><td colspan="${span}" class="text-center py-4 text-muted fw-bold">No hay registros disponibles.</td></tr>`;
-        }
-        
-        return rows.map(r => `
+            container.innerHTML = html;
+        },
+
+        _renderRows: function (id, inst, rows) {
+            if (!rows || rows.length === 0) {
+                const span = inst.config.columnasCRUD ? inst.columns.length + 1 : inst.columns.length;
+                return `<tr><td colspan="${span}" class="text-center py-4 text-muted fw-bold">No hay registros disponibles.</td></tr>`;
+            }
+
+            return rows.map(r => `
             <tr>
                 ${inst.columns.map(c => `<td class="px-3">${c.render ? c.render(r[c.key], r) : (r[c.key] || '-')}</td>`).join('')}
                 ${inst.config.columnasCRUD ? `
@@ -81,19 +81,19 @@ window.Factory = {
                         </button>
                     </td>` : ''}
             </tr>`).join('');
-    },
+        },
 
-    _renderFooter: function(id, inst, totalRows, totalPages) {
-        if (!inst.config.pagination && !inst.config.rowSelector) return '';
+        _renderFooter: function (id, inst, totalRows, totalPages) {
+            if (!inst.config.pagination && !inst.config.rowSelector) return '';
 
-        return `
+            return `
             <div class="d-flex justify-content-between align-items-center bg-light p-2 border-top">
                 <div class="d-flex align-items-center gap-2">
                     ${inst.config.rowSelector ? `
                         <select class="form-select form-select-sm w-auto" onchange="Factory._changeLimit('${id}', this.value)">
-                            <option value="15" ${inst.state.rowsPerPage==15?'selected':''}>15 filas</option>
-                            <option value="50" ${inst.state.rowsPerPage==50?'selected':''}>50 filas</option>
-                            <option value="100" ${inst.state.rowsPerPage==100?'selected':''}>100 filas</option>
+                            <option value="15" ${inst.state.rowsPerPage == 15 ? 'selected' : ''}>15 filas</option>
+                            <option value="50" ${inst.state.rowsPerPage == 50 ? 'selected' : ''}>50 filas</option>
+                            <option value="100" ${inst.state.rowsPerPage == 100 ? 'selected' : ''}>100 filas</option>
                         </select>
                     ` : ''}
                     <span class="extra-small text-muted">Total: <b>${totalRows}</b></span>
@@ -113,24 +113,24 @@ window.Factory = {
                     </nav>
                 ` : ''}
             </div>`;
-    },
+        },
 
-    // ==========================================
-    // 2. GENERADOR DE FORMULARIOS Y MODALES
-    // ==========================================
-    abrirModal: function(config) {
-        const { titulo = 'Sistema', tamaño = 'modal-lg' } = config;
-        let modalEl = document.getElementById('factory-modal');
-        
-        if (!modalEl) {
-            modalEl = document.createElement('div');
-            modalEl.id = 'factory-modal';
-            modalEl.className = 'modal fade';
-            modalEl.setAttribute('data-bs-focus', 'false');
-            document.body.appendChild(modalEl);
-        }
+        // ==========================================
+        // 2. GENERADOR DE FORMULARIOS Y MODALES
+        // ==========================================
+        abrirModal: function (config) {
+            const { titulo = 'Sistema', tamaño = 'modal-lg' } = config;
+            let modalEl = document.getElementById('factory-modal');
 
-        modalEl.innerHTML = `
+            if (!modalEl) {
+                modalEl = document.createElement('div');
+                modalEl.id = 'factory-modal';
+                modalEl.className = 'modal fade';
+                modalEl.setAttribute('data-bs-focus', 'false');
+                document.body.appendChild(modalEl);
+            }
+
+            modalEl.innerHTML = `
             <div class="modal-dialog modal-dialog-centered ${tamaño}">
                 <div class="modal-content shadow-lg border-0">
                     <div class="modal-header bg-light py-2 px-3 border-bottom">
@@ -141,26 +141,26 @@ window.Factory = {
                 </div>
             </div>`;
 
-        this.modalInstance = bootstrap.Modal.getOrCreateInstance(modalEl, {
-            backdrop: 'static',
-            keyboard: false,
-            focus: false
-        });
-        
-        this.modalInstance.show();
-        return 'factory-modal-body';
-    },
+            this.modalInstance = bootstrap.Modal.getOrCreateInstance(modalEl, {
+                backdrop: 'static',
+                keyboard: false,
+                focus: false
+            });
 
-    cerrarModal: function() {
-        if (this.modalInstance) this.modalInstance.hide();
-    },
+            this.modalInstance.show();
+            return 'factory-modal-body';
+        },
 
-    crearFormulario: function(id, config) {
-        const container = document.getElementById(id);
-        if (!container) return;
-        const { fields, onSubmit, data = {} } = config;
+        cerrarModal: function () {
+            if (this.modalInstance) this.modalInstance.hide();
+        },
 
-        container.innerHTML = `
+        crearFormulario: function (id, config) {
+            const container = document.getElementById(id);
+            if (!container) return;
+            const { fields, onSubmit, data = {} } = config;
+
+            container.innerHTML = `
             <div class="p-4 bg-body-tertiary">
                 <form id="f-${id}" onsubmit="event.preventDefault(); Factory._submitForm('${id}')">
                     <div class="row g-3">
@@ -174,26 +174,26 @@ window.Factory = {
                     </div>
                 </form>
             </div>`;
-        this.instances[id] = { ...this.instances[id], onSubmit: onSubmit };
-    },
+            this.instances[id] = { ...this.instances[id], onSubmit: onSubmit };
+        },
 
-    _renderField: function(f, data) {
-        const val = data[f.name] !== undefined ? data[f.name] : (f.default || '');
-        const col = f.col || '12';
-        let input = '';
+        _renderField: function (f, data) {
+            const val = data[f.name] !== undefined ? data[f.name] : (f.default || '');
+            const col = f.col || '12';
+            let input = '';
 
-        if (f.type === 'hidden') {
-            return `<input type="hidden" name="${f.name}" value="${val}">`;
-        }
-        
-        if (f.type === 'select') {
-            input = `<select class="form-select fw-bold" name="${f.name}" ${f.required?'required':''} ${f.readonly?'disabled':''}>
-                ${(f.options || []).map(o => `<option value="${o.id}" ${String(o.id)===String(val)?'selected':''}>${o.label}</option>`).join('')}
+            if (f.type === 'hidden') {
+                return `<input type="hidden" name="${f.name}" value="${val}">`;
+            }
+
+            if (f.type === 'select') {
+                input = `<select class="form-select fw-bold" name="${f.name}" ${f.required ? 'required' : ''} ${f.readonly ? 'disabled' : ''}>
+                ${(f.options || []).map(o => `<option value="${o.id}" ${String(o.id) === String(val) ? 'selected' : ''}>${o.label}</option>`).join('')}
             </select>`;
-            if (f.readonly) input += `<input type="hidden" name="${f.name}" value="${val}">`;
-        } 
-        else if (f.type === 'switch-group') {
-            input = `<div class="row g-2 p-3 bg-white rounded border factory-scroll-area shadow-sm">
+                if (f.readonly) input += `<input type="hidden" name="${f.name}" value="${val}">`;
+            }
+            else if (f.type === 'switch-group') {
+                input = `<div class="row g-2 p-3 bg-white rounded border factory-scroll-area shadow-sm">
                 ${(f.options || []).map(o => `
                     <div class="col-md-6">
                         <div class="form-check form-switch p-2 border rounded ${o.checked ? 'bg-primary-subtle border-primary' : 'bg-light'}">
@@ -205,62 +205,62 @@ window.Factory = {
                     </div>
                 `).join('')}
             </div>`;
-        }
-        else if (f.type === 'checkbox') {
-            input = `<div class="form-check form-switch p-2 rounded bg-warning-subtle border border-warning">
-                <input class="form-check-input ms-1 me-2" type="checkbox" name="${f.name}" id="${f.name}" value="${f.value}" ${val ? 'checked' : ''} onchange="${f.onChange||''}">
+            }
+            else if (f.type === 'checkbox') {
+                input = `<div class="form-check form-switch p-2 rounded bg-warning-subtle border border-warning">
+                <input class="form-check-input ms-1 me-2" type="checkbox" name="${f.name}" id="${f.name}" value="${f.value}" ${val ? 'checked' : ''} onchange="${f.onChange || ''}">
                 <label class="form-check-label fw-bold text-dark" for="${f.name}">${f.labelCheckbox}</label>
             </div>`;
-        }
-        else {
-            input = `<input type="${f.type || 'text'}" class="form-control" name="${f.name}" value="${val}" ${f.required?'required':''} ${f.readonly?'readonly':''}>`;
-        }
+            }
+            else {
+                input = `<input type="${f.type || 'text'}" class="form-control" name="${f.name}" value="${val}" ${f.required ? 'required' : ''} ${f.readonly ? 'readonly' : ''}>`;
+            }
 
-        return `<div class="col-md-${col}"><label class="small fw-bold text-muted text-uppercase mb-1" style="font-size:0.7rem">${f.label}</label>${input}</div>`;
-    },
+            return `<div class="col-md-${col}"><label class="small fw-bold text-muted text-uppercase mb-1" style="font-size:0.7rem">${f.label}</label>${input}</div>`;
+        },
 
-    // ==========================================
-    // 3. UTILIDADES INTERNAS
-    // ==========================================
-    _submitForm: function(id) {
-        const form = document.getElementById(`f-${id}`);
-        const formData = new FormData(form);
-        const payload = {};
-        
-        for (let [key, value] of formData.entries()) {
-            if (key.endsWith('[]')) {
-                const cleanKey = key.slice(0, -2);
-                if (!payload[cleanKey]) payload[cleanKey] = [];
-                payload[cleanKey].push(value);
-            } else {
-                payload[key] = value;
+        // ==========================================
+        // 3. UTILIDADES INTERNAS
+        // ==========================================
+        _submitForm: function (id) {
+            const form = document.getElementById(`f-${id}`);
+            const formData = new FormData(form);
+            const payload = {};
+
+            for (let [key, value] of formData.entries()) {
+                if (key.endsWith('[]')) {
+                    const cleanKey = key.slice(0, -2);
+                    if (!payload[cleanKey]) payload[cleanKey] = [];
+                    payload[cleanKey].push(value);
+                } else {
+                    payload[key] = value;
+                }
+            }
+
+            const btn = document.getElementById(`btn-submit-${id}`);
+            if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Procesando...'; }
+
+            if (this.instances[id]?.onSubmit) this.instances[id].onSubmit(payload);
+        },
+
+        _bridge: function (id, val) {
+            if (this.instances[id].onEdit) this.instances[id].onEdit(val);
+        },
+
+        _changePage: function (id, newPage) {
+            if (this.instances[id]) {
+                this.instances[id].state.currentPage = newPage;
+                this._renderTabla(id);
+            }
+        },
+
+        _changeLimit: function (id, newLimit) {
+            if (this.instances[id]) {
+                this.instances[id].state.rowsPerPage = parseInt(newLimit);
+                this.instances[id].state.currentPage = 1;
+                this._renderTabla(id);
             }
         }
-
-        const btn = document.getElementById(`btn-submit-${id}`);
-        if(btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Procesando...'; }
-
-        if (this.instances[id]?.onSubmit) this.instances[id].onSubmit(payload);
-    },
-
-    _bridge: function(id, val) { 
-        if (this.instances[id].onEdit) this.instances[id].onEdit(val); 
-    },
-
-    _changePage: function(id, newPage) {
-        if (this.instances[id]) {
-            this.instances[id].state.currentPage = newPage;
-            this._renderTabla(id);
-        }
-    },
-
-    _changeLimit: function(id, newLimit) {
-        if (this.instances[id]) {
-            this.instances[id].state.rowsPerPage = parseInt(newLimit);
-            this.instances[id].state.currentPage = 1;
-            this._renderTabla(id);
-        }
-    }
-};
-console.log("✅ [MOTOR] Lib_Factory v4.8.0 Activo.");
+    };
+    console.log("✅ [MOTOR] Lib_Factory v5.0.0 Activo.");
 </script>

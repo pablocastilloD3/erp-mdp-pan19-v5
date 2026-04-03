@@ -1,302 +1,388 @@
 <style>
-/* ==========================================================================
-   ERP MDP PAN19 v4.0.0 - REGLAS CSS CORE
+    /* ==========================================================================
+   ERP MDP PAN19 v5.0.0 - REGLAS CSS CORE
    Arquitectura: App Shell + Componentes Aislados (BS 5.3)
    ========================================================================== */
 
-/* --- 1. VARIABLES GLOBALES --- */
-:root {
-    --erp-sidebar-width: 260px;
-    --erp-transition-speed: 0.25s;
-}
-
-/* --- 2. AISLAMIENTO DE FRAME Y APP SHELL (CRÍTICO PARA GAS/SAFARI) --- */
-html, body {
-    width: 100vw !important;
-    height: 100vh !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    overflow: hidden !important; /* Bloquea el disparador del sensor de Google */
-    position: fixed; /* Refuerza la inmovilidad en iOS/Safari */
-}
-
-/* Prohíbe a Bootstrap manipular el body al abrir Modales o tablas */
-body.modal-open, 
-body.offcanvas-open {
-    padding-right: 0 !important;
-    overflow: hidden !important;
-}
-
-/* Evita que Bootstrap expanda el body y rompa el iframe al abrir modales */
-.modal-open {
-    overflow-y: auto !important;
-    padding-right: 0 !important;
-}
-
-/* El fondo del modal oscurecido sin desenfoque extremo para no saturar Safari */
-.modal-backdrop.show { 
-    opacity: 0.7; 
-    backdrop-filter: blur(2px); 
-}
-
-/* --- 3. SCROLLBARS INDUSTRIALES (Webkit) --- */
-::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
-}
-::-webkit-scrollbar-track {
-    background: var(--bs-secondary-bg); 
-}
-::-webkit-scrollbar-thumb {
-    background: var(--bs-secondary); 
-    border-radius: 4px;
-}
-::-webkit-scrollbar-thumb:hover {
-    background: var(--bs-primary); 
-}
-
-/* --- 4. MOTOR SPA (Transiciones de Vistas) --- */
-.spa-view {
-    display: none;
-    opacity: 0;
-}
-
-.spa-view.active {
-    display: block;
-    opacity: 1;
-    animation: fadeInView var(--erp-transition-speed) ease-in-out forwards;
-}
-
-@keyframes fadeInView {
-    0% { opacity: 0; transform: translateY(10px); }
-    100% { opacity: 1; transform: translateY(0); }
-}
-
-/* --- 5. LAYOUT: SIDEBAR Y NAVEGACIÓN --- */
-@media (min-width: 768px) {
-    .sidebar-desktop {
-        width: var(--erp-sidebar-width);
-        transition: width var(--erp-transition-speed);
+    /* --- 1. VARIABLES GLOBALES --- */
+    :root {
+        --erp-sidebar-width: 260px;
+        --erp-transition-speed: 0.25s;
     }
-}
 
-.nav-pills .nav-link.active {
-    box-shadow: 0 2px 4px rgba(0,0,0,0.15);
-    transition: background-color var(--erp-transition-speed) ease;
-}
+    /* --- 2. AISLAMIENTO DE FRAME Y APP SHELL (CRÍTICO PARA GAS/SAFARI) --- */
+    html,
+    body {
+        width: 100vw !important;
+        height: 100vh !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        overflow: hidden !important;
+        /* Bloquea el disparador del sensor de Google */
+        position: fixed;
+        /* Refuerza la inmovilidad en iOS/Safari */
+    }
 
-/* --- 6. MOTOR DE PLANTILLAS: LIB_FACTORY --- */
-/* Contenedores Base */
-.factory-container { 
-    background: #fff; 
-    border-radius: 10px; 
-    overflow: hidden; 
-}
-.factory-form-container { 
-    padding: 20px; 
-    background: #fff; 
-}
-.factory-scroll-area {
-    max-height: 350px;
-    overflow-y: auto;
-    overflow-x: hidden;
-}
+    /* Prohíbe a Bootstrap manipular el body al abrir Modales o tablas */
+    body.modal-open,
+    body.offcanvas-open {
+        padding-right: 0 !important;
+        overflow: hidden !important;
+    }
 
-/* Formularios e Inputs */
-.form-label-custom { 
-    font-size: 0.7rem; 
-    font-weight: 800; 
-    color: #6c757d; 
-    text-transform: uppercase; 
-    margin-bottom: 3px; 
-}
-.factory-input:focus { 
-    border-color: #0d6efd; 
-    box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.1); 
-}
+    /* Evita que Bootstrap expanda el body y rompa el iframe al abrir modales */
+    .modal-open {
+        overflow-y: auto !important;
+        padding-right: 0 !important;
+    }
 
-/* Modales Dinámicos */
-.factory-modal .modal-content { 
-    border: none; 
-    border-radius: 12px; 
-    box-shadow: 0 10px 30px rgba(0,0,0,0.2); 
-}
-.factory-modal .modal-header { 
-    background: #f8f9fa; 
-    border-bottom: 1px solid #eee; 
-    border-radius: 12px 12px 0 0; 
-}
-.factory-modal .modal-title { 
-    font-size: 0.9rem; 
-    font-weight: 800; 
-    color: #212529; 
-    text-transform: uppercase; 
-    letter-spacing: 1px; 
-}
-.modal-xl { 
-    max-width: 90% !important; 
-}
+    /* El fondo del modal oscurecido sin desenfoque extremo para no saturar Safari */
+    .modal-backdrop.show {
+        opacity: 0.7;
+        backdrop-filter: blur(2px);
+    }
 
-/* Tablas Dinámicas: Acordeones y Telemetría */
-.group-header { 
-    cursor: pointer; 
-    background-color: #f8f9fa !important; 
-    font-weight: bold; 
-    color: #0d6efd; 
-    transition: background-color 0.2s; 
-}
-.group-header:hover { background-color: #f1f3f5 !important; }
-.group-header i { transition: transform 0.3s; }
-.group-header.collapsed i { transform: rotate(-90deg); }
+    /* --- 3. SCROLLBARS INDUSTRIALES (Webkit) --- */
+    ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+    }
 
-.sort-link { cursor: pointer; text-decoration: none; color: inherit; display: block; }
-.sort-icon { font-size: 0.7rem; opacity: 0.3; }
-.sort-active { opacity: 1; color: #fff; }
+    ::-webkit-scrollbar-track {
+        background: var(--bs-secondary-bg);
+    }
 
-.telemetry { font-size: 0.7rem; color: #6c757d; font-family: var(--bs-font-monospace); }
+    ::-webkit-scrollbar-thumb {
+        background: var(--bs-secondary);
+        border-radius: 4px;
+    }
 
-/* Estados (XML/Auditoría) */
-.xml-status { font-size: 0.7rem; font-weight: bold; margin-top: 4px; display: block; }
-.xml-success { color: #198754; }
-.xml-error { color: #dc3545; }
-.xml-loading { color: #0d6efd; }
+    ::-webkit-scrollbar-thumb:hover {
+        background: var(--bs-primary);
+    }
 
-/* --- 7. COMPONENTES INSTITUCIONALES Y ALERTAS (URS-28) --- */
-.erp-fatal-error {
-    border-radius: 0.5rem;
-    box-shadow: 0 1rem 3rem rgba(0,0,0,.175) !important;
-}
+    /* --- 4. MOTOR SPA (Transiciones de Vistas) --- */
+    .spa-view {
+        display: none;
+        opacity: 0;
+    }
 
-.erp-code-block {
-    background-color: var(--bs-dark);
-    color: var(--bs-warning);
-    font-family: var(--bs-font-monospace);
-    font-size: 0.875rem;
-    word-break: break-word;
-    padding: 1rem;
-    border-radius: 0.375rem;
-}
+    .spa-view.active {
+        display: block;
+        opacity: 1;
+        animation: fadeInView var(--erp-transition-speed) ease-in-out forwards;
+    }
 
-/* Footer y Sensores */
-.erp-footer { z-index: 1030; }
-.erp-footer-sensor { font-family: var(--bs-font-monospace); font-size: 0.7rem; }
-.erp-footer-spinner { width: 0.5rem; height: 0.5rem; }
-.erp-footer-compliance { font-size: 0.75rem; }
-.erp-footer-arch { font-size: 0.7rem; letter-spacing: 0.5px; }
+    @keyframes fadeInView {
+        0% {
+            opacity: 0;
+            transform: translateY(10px);
+        }
 
-/* El footer debe ser rígido, no debe encogerse si el contenido crece */
-footer.flex-shrink-0 {
-    z-index: 1030;
-    position: relative; 
-    border-top: 1px solid var(--bs-border-color-translucent);
-}
+        100% {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
 
-/* El contenedor que agrupa Header + Workspace + Footer */
-.flex-column.flex-grow-1 {
-    height: 100vh; /* Ocupa el alto total de la ventana */
-}
+    /* --- 5. LAYOUT: SIDEBAR Y NAVEGACIÓN --- */
+    @media (min-width: 768px) {
+        .sidebar-desktop {
+            width: var(--erp-sidebar-width);
+            transition: width var(--erp-transition-speed);
+        }
+    }
 
-/* 🛡️ Aislamiento de Capas: Asegura que el contenido pase al frente del Splash invisible */
-#app-workspace {
-    flex: 1 1 auto;
-    width: 100%;
-    position: relative;
-    overflow-y: auto;
-    overflow-x: hidden;
-    /* 🚀 Propiedad Clave: Aisla tamaño, diseño y estilo del resto del DOM */
-    contain: strict; 
-    -webkit-overflow-scrolling: touch; /* Suavizado para Safari */
-}
+    .nav-pills .nav-link.active {
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+        transition: background-color var(--erp-transition-speed) ease;
+    }
 
-/* 🛡️ Mata la comunicación forzada de redimensión (Silencia el x2) */
-iframe, .modal, .offcanvas {
-    contain: paint; /* Le dice al navegador: "No calcules nada fuera de estos límites" */
-}
+    /* --- 6. MOTOR DE PLANTILLAS: LIB_FACTORY --- */
+    /* Contenedores Base */
+    .factory-container {
+        background: #fff;
+        border-radius: 10px;
+        overflow: hidden;
+    }
 
-/* ==========================================================================
+    .factory-form-container {
+        padding: 20px;
+        background: #fff;
+    }
+
+    .factory-scroll-area {
+        max-height: 350px;
+        overflow-y: auto;
+        overflow-x: hidden;
+    }
+
+    /* Formularios e Inputs */
+    .form-label-custom {
+        font-size: 0.7rem;
+        font-weight: 800;
+        color: #6c757d;
+        text-transform: uppercase;
+        margin-bottom: 3px;
+    }
+
+    .factory-input:focus {
+        border-color: #0d6efd;
+        box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.1);
+    }
+
+    /* Modales Dinámicos */
+    .factory-modal .modal-content {
+        border: none;
+        border-radius: 12px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+    }
+
+    .factory-modal .modal-header {
+        background: #f8f9fa;
+        border-bottom: 1px solid #eee;
+        border-radius: 12px 12px 0 0;
+    }
+
+    .factory-modal .modal-title {
+        font-size: 0.9rem;
+        font-weight: 800;
+        color: #212529;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+    }
+
+    .modal-xl {
+        max-width: 90% !important;
+    }
+
+    /* Tablas Dinámicas: Acordeones y Telemetría */
+    .group-header {
+        cursor: pointer;
+        background-color: #f8f9fa !important;
+        font-weight: bold;
+        color: #0d6efd;
+        transition: background-color 0.2s;
+    }
+
+    .group-header:hover {
+        background-color: #f1f3f5 !important;
+    }
+
+    .group-header i {
+        transition: transform 0.3s;
+    }
+
+    .group-header.collapsed i {
+        transform: rotate(-90deg);
+    }
+
+    .sort-link {
+        cursor: pointer;
+        text-decoration: none;
+        color: inherit;
+        display: block;
+    }
+
+    .sort-icon {
+        font-size: 0.7rem;
+        opacity: 0.3;
+    }
+
+    .sort-active {
+        opacity: 1;
+        color: #fff;
+    }
+
+    .telemetry {
+        font-size: 0.7rem;
+        color: #6c757d;
+        font-family: var(--bs-font-monospace);
+    }
+
+    /* Estados (XML/Auditoría) */
+    .xml-status {
+        font-size: 0.7rem;
+        font-weight: bold;
+        margin-top: 4px;
+        display: block;
+    }
+
+    .xml-success {
+        color: #198754;
+    }
+
+    .xml-error {
+        color: #dc3545;
+    }
+
+    .xml-loading {
+        color: #0d6efd;
+    }
+
+    /* --- 7. COMPONENTES INSTITUCIONALES Y ALERTAS (URS-28) --- */
+    .erp-fatal-error {
+        border-radius: 0.5rem;
+        box-shadow: 0 1rem 3rem rgba(0, 0, 0, .175) !important;
+    }
+
+    .erp-code-block {
+        background-color: var(--bs-dark);
+        color: var(--bs-warning);
+        font-family: var(--bs-font-monospace);
+        font-size: 0.875rem;
+        word-break: break-word;
+        padding: 1rem;
+        border-radius: 0.375rem;
+    }
+
+    /* Footer y Sensores */
+    .erp-footer {
+        z-index: 1030;
+    }
+
+    .erp-footer-sensor {
+        font-family: var(--bs-font-monospace);
+        font-size: 0.7rem;
+    }
+
+    .erp-footer-spinner {
+        width: 0.5rem;
+        height: 0.5rem;
+    }
+
+    .erp-footer-compliance {
+        font-size: 0.75rem;
+    }
+
+    .erp-footer-arch {
+        font-size: 0.7rem;
+        letter-spacing: 0.5px;
+    }
+
+    /* El footer debe ser rígido, no debe encogerse si el contenido crece */
+    footer.flex-shrink-0 {
+        z-index: 1030;
+        position: relative;
+        border-top: 1px solid var(--bs-border-color-translucent);
+    }
+
+    /* El contenedor que agrupa Header + Workspace + Footer */
+    .flex-column.flex-grow-1 {
+        height: 100vh;
+        /* Ocupa el alto total de la ventana */
+    }
+
+    /* 🛡️ Aislamiento de Capas: Asegura que el contenido pase al frente del Splash invisible */
+    #app-workspace {
+        flex: 1 1 auto;
+        width: 100%;
+        position: relative;
+        overflow-y: auto;
+        overflow-x: hidden;
+        /* 🚀 Propiedad Clave: Aisla tamaño, diseño y estilo del resto del DOM */
+        contain: strict;
+        -webkit-overflow-scrolling: touch;
+        /* Suavizado para Safari */
+    }
+
+    /* 🛡️ Mata la comunicación forzada de redimensión (Silencia el x2) */
+    iframe,
+    .modal,
+    .offcanvas {
+        contain: paint;
+        /* Le dice al navegador: "No calcules nada fuera de estos límites" */
+    }
+
+    /* ==========================================================================
    👻 SIDEBAR FANTASMA (Zero Reflow Global)
    ========================================================================== */
-@media (min-width: 768px) {
-    #sys-sidebar {
-        width: var(--erp-sidebar-width);
-        transition: margin-left var(--erp-transition-speed) ease;
-        will-change: margin-left; /* Optimización de GPU */
-    }
-    
-    /* Esta clase empuja el menú fuera de la pantalla hacia la izquierda */
-    #sys-sidebar.phantom-collapsed {
-        margin-left: calc(-1 * var(--erp-sidebar-width));
-    }
-}
+    @media (min-width: 768px) {
+        #sys-sidebar {
+            width: var(--erp-sidebar-width);
+            transition: margin-left var(--erp-transition-speed) ease;
+            will-change: margin-left;
+            /* Optimización de GPU */
+        }
 
-/* ==========================================================================
+        /* Esta clase empuja el menú fuera de la pantalla hacia la izquierda */
+        #sys-sidebar.phantom-collapsed {
+            margin-left: calc(-1 * var(--erp-sidebar-width));
+        }
+    }
+
+    /* ==========================================================================
    👻 ALERTA DE CADENA INTERVENIDA EN LA BD SYS_AUDIT_LOG
    ========================================================================== */
-  
-  /* Resaltado de fila con fallo de integridad */
-  .fila-hash-corrupto { 
-    background-color: rgba(220, 53, 69, 0.12) !important; 
-    border-left: 5px solid #dc3545 !important;
-    transition: all 0.3s ease;
-  }
-  
-  /* Animación de pulso para la alerta global */
-  .pulse-danger-glow {
-    animation: glow-red 1.5s infinite alternate;
-    border: 2px solid #dc3545 !important;
-  }
 
-  @keyframes glow-red {
-    from { box-shadow: 0 0 5px rgba(220, 53, 69, 0.2); }
-    to { box-shadow: 0 0 20px rgba(220, 53, 69, 0.6); }
-  }
+    /* Resaltado de fila con fallo de integridad */
+    .fila-hash-corrupto {
+        background-color: rgba(220, 53, 69, 0.12) !important;
+        border-left: 5px solid #dc3545 !important;
+        transition: all 0.3s ease;
+    }
 
-  .badge-critico {
-    background: #dc3545;
-    color: white;
-    font-size: 0.6rem;
-    padding: 2px 6px;
-    border-radius: 4px;
-    font-weight: bold;
-    text-transform: uppercase;
-  }
+    /* Animación de pulso para la alerta global */
+    .pulse-danger-glow {
+        animation: glow-red 1.5s infinite alternate;
+        border: 2px solid #dc3545 !important;
+    }
 
-/* Estructura Maestra del Sidebar PAN19 */
-.sidebar-forense {
-    height: 100vh !important;
-    display: flex !important;
-    flex-direction: column !important;
-    overflow: hidden !important;
-}
+    @keyframes glow-red {
+        from {
+            box-shadow: 0 0 5px rgba(220, 53, 69, 0.2);
+        }
 
-/* Contenedor de Navegación con Scroll Independiente */
-.sidebar-nav-scroll {
-    flex-grow: 1;
-    overflow-y: auto;
-    scrollbar-width: thin;
-    scrollbar-color: #444 #212529;
-}
+        to {
+            box-shadow: 0 0 20px rgba(220, 53, 69, 0.6);
+        }
+    }
 
-/* Pie de Página Anclado (Sticky Footer) */
-.sidebar-footer-fixed {
-    flex-shrink: 0;
-    border-top: 1px solid rgba(255, 255, 255, 0.1);
-    background-color: rgba(0, 0, 0, 0.25);
-    padding: 1.25rem;
-}
+    .badge-critico {
+        background: #dc3545;
+        color: white;
+        font-size: 0.6rem;
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-weight: bold;
+        text-transform: uppercase;
+    }
 
-/* Estilo del Botón de Cierre */
-.btn-logout-forense {
-    transition: all 0.3s ease;
-    border-style: dashed !important;
-    letter-spacing: 0.5px;
-    font-size: 0.85rem;
-}
+    /* Estructura Maestra del Sidebar PAN19 */
+    .sidebar-forense {
+        height: 100vh !important;
+        display: flex !important;
+        flex-direction: column !important;
+        overflow: hidden !important;
+    }
 
-.btn-logout-forense:hover {
-    background-color: rgba(220, 53, 69, 0.1);
-    border-style: solid !important;
-    transform: translateY(-1px);
-}
+    /* Contenedor de Navegación con Scroll Independiente */
+    .sidebar-nav-scroll {
+        flex-grow: 1;
+        overflow-y: auto;
+        scrollbar-width: thin;
+        scrollbar-color: #444 #212529;
+    }
 
+    /* Pie de Página Anclado (Sticky Footer) */
+    .sidebar-footer-fixed {
+        flex-shrink: 0;
+        border-top: 1px solid rgba(255, 255, 255, 0.1);
+        background-color: rgba(0, 0, 0, 0.25);
+        padding: 1.25rem;
+    }
+
+    /* Estilo del Botón de Cierre */
+    .btn-logout-forense {
+        transition: all 0.3s ease;
+        border-style: dashed !important;
+        letter-spacing: 0.5px;
+        font-size: 0.85rem;
+    }
+
+    .btn-logout-forense:hover {
+        background-color: rgba(220, 53, 69, 0.1);
+        border-style: solid !important;
+        transform: translateY(-1px);
+    }
 </style>
