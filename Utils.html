@@ -1,0 +1,326 @@
+<script>
+    /**
+     * @file Utils.html
+     * @description Motor de Hidratación y Centinela v5.3.0 (URS-28 / ISO 22000).
+     * @version 5.3.0
+     * @reparacion [P8] Implementación de Interceptor Zero Trust (Hot Kick). 
+     * @reparacion [V5] Consolidación de Bóveda Singleton (Evita destrucción de estado).
+     */
+
+    // 🚀 FIX: Patrón Singleton para no destruir propiedades inyectadas por Scripts_Main
+    window.SISTEMA_ERP = window.SISTEMA_ERP || {};
+    Object.assign(window.SISTEMA_ERP, {
+        moduloActual: window.SISTEMA_ERP.moduloActual || 'home',
+        datos: window.SISTEMA_ERP.datos || {},      // Aquí va la RAM (tablas)
+        modulos: window.SISTEMA_ERP.modulos || {},    // Controladores
+        ipCliente: window.SISTEMA_ERP.ipCliente || "0.0.0.0",
+        estadoSesion: window.SISTEMA_ERP.estadoSesion || 'INIT'
+    });
+
+    window.ERP_Utils = {
+        /**
+         * @function actualizarSplash
+         * @description Actualiza la interfaz de la pantalla de carga dinámicamente
+         */
+        actualizarSplash: function (estadoPrincipal, estadoSecundario, porcentaje) {
+            const txtMain = document.getElementById('splash-status-text');
+            const txtSub = document.getElementById('splash-sub-text');
+            const barra = document.getElementById('splash-progress-bar');
+
+            if (txtMain && estadoPrincipal) txtMain.innerText = estadoPrincipal;
+            if (txtSub && estadoSecundario) txtSub.innerText = estadoSecundario;
+            if (barra && porcentaje) barra.style.width = porcentaje + '%';
+        },
+
+        /**
+         * @function capturarIP
+         * @description Obtiene la IP pública del cliente para la auditoría forense
+         */
+        capturarIP: async function () {
+            try {
+                const response = await fetch('https://api.ipify.org?format=json');
+                const data = await response.json();
+                window.SISTEMA_ERP.ipCliente = data.ip; // Guarda en el objeto global
+            } catch (e) {
+                window.SISTEMA_ERP.ipCliente = "0.0.0.0";
+            }
+        },
+
+        abrirModalDinamico: function (titulo, html, tamano = 'modal-lg') {
+            const modalId = 'modal-dinamico-' + Date.now();
+            const modalHtml = `
+          <div class="modal fade" id="${modalId}" tabindex="-1" aria-hidden="true" style="z-index: 1070;">
+            <div class="modal-dialog modal-dialog-centered ${tamano}">
+              <div class="modal-content shadow-lg border-0">
+                <div class="modal-header bg-success text-white py-2 px-3">
+                  <h6 class="modal-title fw-bold text-uppercase small"><i class="bi bi-search me-2"></i>${titulo}</h6>
+                  <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-0">${html}</div>
+              </div>
+            </div>
+          </div>`;
+
+            document.body.insertAdjacentHTML('beforeend', modalHtml);
+            const modalEl = document.getElementById(modalId);
+            const m = new bootstrap.Modal(modalEl);
+            m.show();
+
+            modalEl.addEventListener('hidden.bs.modal', function () {
+                modalEl.remove();
+                if (document.querySelector('.modal.show')) document.body.classList.add('modal-open');
+            });
+        },
+
+        // ====================================================================
+        // 0. INTERCEPTOR ZERO TRUST (HOT KICK)
+        // ====================================================================
+
+        /**
+         * @function procesarRespuestaZeroTrust
+         * @description Evalúa el payload del servidor. Si detecta un error tipo 'FATAL_AUTH',
+         * ejecuta la expulsión del usuario. Si no, devuelve el objeto parseado.
+         * @param {string} resStr Respuesta JSON cruda del servidor
+         * @returns {Object|boolean} El objeto JSON o false si hubo un Hot Kick
+         */
+        procesarRespuestaZeroTrust: function (resStr) {
+            try {
+                const res = JSON.parse(resStr);
+                if (res.error && res.tipo === 'FATAL_AUTH') {
+                    console.error("💀 [Zero Trust] Negación de servicio detectada.");
+                    if (window.Ctrl_Seguridad) {
+                        window.Ctrl_Seguridad.bloquearPantallaTotal(res.mensaje || "Sesión revocada por el administrador.");
+                    } else {
+                        // Fallback de emergencia si Ctrl_Seguridad no está cargado
+                        document.body.innerHTML = `<h1 style="color:red;text-align:center;margin-top:20%">ACCESO DENEGADO</h1>`;
+                    }
+                    return false;
+                }
+                return res;
+            } catch (e) {
+                console.error("❌ [Zero Trust] Error parseando respuesta:", e);
+                return { error: true, message: "Error de formato en la respuesta." };
+            }
+        },
+
+        // ====================================================================
+        // 1. TELEMETRÍA Y SISTEMA (ISO/SII)
+        // ====================================================================
+
+        hidratarTelemetria: function () {
+            google.script.run
+                .withSuccessHandler(resStr => {
+                    const res = this.procesarRespuestaZeroTrust(resStr);
+                    if (!res) return; // Abortar si hubo Hot Kick
+
+                    if (res.success) {
+                        const ids = {
+                            'ui-footer-appname': res.appName,
+                            'ui-footer-norma1': res.norma1,
+                            'ui-footer-norma2': res.norma2,
+                            'ui-footer-arch': res.arch
+                        };
+                        for (let id in ids) {
+                            const el = document.getElementById(id);
+                            if (el) el.innerText = ids[id];
+                        }
+                        const badge = document.getElementById('footer-env-sensor');
+                        if (badge) {
+                            badge.className = res.isDev
+                                ? 'badge bg-warning text-dark ms-1'
+                                : 'badge bg-success text-white ms-1';
+                            badge.innerHTML = `v${res.version} | ${res.env}`;
+                        }
+                    }
+                })
+                .withFailureHandler(err => console.error("❌ [Utils] Fallo al obtener telemetría:", err))
+                .w_getSystemTelemetry();
+        },
+
+        // ====================================================================
+        // 2. MOTOR DE HIDRATACIÓN — MÉTODO CANÓNICO (URS ENGINE)
+        // ====================================================================
+
+        descargarRAM: function (permisos) {
+            console.log("📥 [Utils] Iniciando descarga de RAM (canal canónico)...");
+
+            // 👉 FASE 2: Solicitar Base de Datos (50%)
+            this.actualizarSplash('Descargando Datos', 'Conectando con Google Sheets...', 50);
+
+            google.script.run
+                .withSuccessHandler(resStr => {
+                    try {
+                        // 👉 FASE 3: Mapeo de Matrices (80%)
+                        this.actualizarSplash('Hidratando RAM', 'Mapeando matrices de módulos...', 80);
+
+                        const resBruto = JSON.parse(resStr);
+                        // Aquí no aplicamos procesarRespuestaZeroTrust porque la descarga de RAM
+                        // no es una acción de escritura, pero podríamos si el backend lo requiere.
+                        window.SISTEMA_ERP.datos = this.procesarTablasURS(resBruto);
+
+                        console.log("✅ [Utils] RAM Hidratada (descarga inicial).");
+
+                        // 👉 FASE 4: Finalización y limpieza visual (100%)
+                        this.actualizarSplash('Sistema Operativo', 'Iniciando interfaz...', 100);
+
+                        setTimeout(() => {
+                            const splash = document.getElementById('erp-splash-screen');
+                            if (splash) {
+                                splash.style.opacity = '0';
+                                setTimeout(() => {
+                                    splash.style.visibility = 'hidden';
+                                    splash.style.display = 'none';
+                                    splash.style.zIndex = '-1000';
+                                    splash.style.pointerEvents = 'none';
+                                    console.log("💥 [Utils] Splash Screen removido del cálculo de geometría.");
+                                }, 600);
+                            }
+
+                            // Notificar a controladores que la data está lista
+                            window.dispatchEvent(new CustomEvent('erp-datos-listos'));
+
+                            // Render inicial del menú y navegación
+                            if (window.Ctrl_Enrutamiento) {
+                                window.Ctrl_Enrutamiento.construirMenuGenerativo(permisos);
+                                window.navegarA('home');
+                            }
+                        }, 500);
+
+                    } catch (e) {
+                        console.error("❌ [Utils] Error procesando RAM inicial:", e);
+                        this.actualizarSplash('Error Crítico', 'Fallo en hidratación de RAM', 100);
+                    }
+                })
+                .withFailureHandler(err => {
+                    console.error("❌ [Utils] Fallo en descarga de RAM (canal canónico):", err);
+                    this.actualizarSplash('Fallo de Red', 'No se pudo contactar al servidor', 100);
+                    if (this.mostrarToast) this.mostrarToast("Error al cargar la base de datos.", "danger");
+                })
+                .getDatabaseCompleta();
+        },
+
+        recargaSilenciosa: function (callback) {
+            if (this._syncBusy) {
+                console.warn("⚠️ [Utils] recargaSilenciosa ignorada — sincronización ya en curso.");
+                return;
+            }
+            this._syncBusy = true;
+
+            const badge = document.getElementById('ram-sync-status');
+            if (badge) badge.classList.remove('d-none');
+
+            console.log("🔄 [Utils] Iniciando recarga silenciosa de RAM...");
+
+            google.script.run
+                .withSuccessHandler(resStr => {
+                    try {
+                        const resBruto = JSON.parse(resStr);
+                        window.SISTEMA_ERP.datos = this.procesarTablasURS(resBruto);
+                        window.dispatchEvent(new CustomEvent('erp-datos-listos'));
+                        console.log("✅ [Utils] RAM re-hidratada silenciosamente.");
+                    } catch (e) {
+                        console.error("❌ [Utils] Error procesando recarga silenciosa:", e);
+                    } finally {
+                        this._syncBusy = false;
+                        if (badge) badge.classList.add('d-none');
+                        if (typeof callback === 'function') callback();
+                    }
+                })
+                .withFailureHandler(err => {
+                    console.error("❌ [Utils] recargaSilenciosa — fallo de red:", err);
+                    this._syncBusy = false;
+                    if (badge) badge.classList.add('d-none');
+                    if (this.mostrarToast) this.mostrarToast("Error al sincronizar. Intente nuevamente.", "danger");
+                })
+                .getDatabaseCompleta();
+        },
+
+        // ====================================================================
+        // 3. PROCESAMIENTO URS (Motor de Mapeo)
+        // ====================================================================
+
+        procesarTablasURS: function (datosBrutos) {
+            const procesados = {};
+            for (const [tabla, filas] of Object.entries(datosBrutos)) {
+                procesados[tabla] = this.mapearMatrizAObjetos(filas);
+            }
+            return procesados;
+        },
+
+        mapearMatrizAObjetos: function (matriz) {
+            if (!Array.isArray(matriz) || matriz.length === 0) return [];
+            const headers = matriz[0].map(h => String(h || "").trim().toUpperCase());
+            return matriz.slice(1).map(fila => {
+                const obj = {};
+                headers.forEach((h, i) => {
+                    if (h) obj[h] = (fila[i] !== undefined) ? fila[i] : "";
+                });
+                return obj;
+            });
+        },
+
+        // ====================================================================
+        // 4. UI & FEEDBACK
+        // ====================================================================
+
+        mostrarToast: function (mensaje, tipo = 'info') {
+            let container = document.getElementById('erp-toast-container');
+            if (!container) {
+                container = document.createElement('div');
+                container.id = 'erp-toast-container';
+                container.className = 'toast-container position-fixed bottom-0 end-0 p-3';
+                container.style.zIndex = '9999';
+                document.body.appendChild(container);
+            }
+            const bg = tipo === 'success' ? 'bg-success'
+                : tipo === 'danger' ? 'bg-danger'
+                    : tipo === 'warning' ? 'bg-warning text-dark'
+                        : 'bg-primary';
+
+            const html = `
+            <div class="toast align-items-center text-white ${bg} border-0 shadow" role="alert" aria-live="assertive">
+                <div class="d-flex">
+                    <div class="toast-body fw-bold">${mensaje}</div>
+                    <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Cerrar"></button>
+                </div>
+            </div>`;
+            container.insertAdjacentHTML('beforeend', html);
+            new bootstrap.Toast(container.lastElementChild, { delay: 3500 }).show();
+        },
+
+        mostrarLoading: function (estado) {
+            const loader = document.getElementById('view-loader');
+            if (loader) {
+                estado ? loader.classList.remove('d-none') : loader.classList.add('d-none');
+            }
+        },
+
+        // ====================================================================
+        // 5. SEGURIDAD Y AUDITORÍA (ISO 22000 / SII)
+        // ====================================================================
+
+        registrarAuditoria: function (accion, modulo, idEntidad = 'N/A', detalle = '') {
+            google.script.run.w_registrarAuditoriaFrontend(
+                accion, modulo, idEntidad, detalle, 'N/A', 'N/A'
+            );
+        },
+
+        _syncBusy: false
+
+    };
+
+    // ============================================================================
+    // ESCUCHA DE AUTENTICACIÓN
+    // ============================================================================
+    window.addEventListener('erp-auth-success', function (e) {
+        console.log("🔔 [Utils] Señal 'erp-auth-success' capturada. Iniciando protocolo de descarga...");
+
+        // 👉 FASE 1: Post-Autenticación (30%)
+        window.ERP_Utils.actualizarSplash('Identidad Confirmada', 'Iniciando telemetría de sesión...', 30);
+
+        window.ERP_Utils.hidratarTelemetria();
+
+        console.log("⏳ [Utils] Delegando descarga a canal canónico descargarRAM()...");
+        window.ERP_Utils.descargarRAM(e.detail?.permisos || []);
+    });
+</script>

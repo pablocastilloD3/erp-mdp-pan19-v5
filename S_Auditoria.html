@@ -1,0 +1,242 @@
+<script>
+    /**
+     * @file S_Auditoria.html
+     * @version 5.0.0
+     * @project ERP MDP PAN19 - Sistema de Gestión Industrial
+     * @author Murphy - Arquitecto PMDC
+     * @compliance ISO 22000 / SII Chile / URS-28
+     * @description Integración Final: Filtro HASH CORRUPTO & Relevancia.
+     * @reparacion [V5] Estructura meta estandarizada, contenedor ID actualizado y ADC centralizado.
+     */
+
+    window.Ctrl_Auditoria = {
+        // 🚀 FIX V5: Objeto meta con plantilla estricta URS-28
+        meta: {
+            id: 'auditoria',
+            version: '5.0.0',
+            titulo: 'Auditoría Forense',
+            icono: 'bi-shield-lock-fill',
+            tematica: 'Administración',
+            seguridad: { permisos: ['*'], nivel_acceso: 1 }
+        },
+
+        estado: {
+            filtroUser: '', filtroAccion: '', filtroDias: 30, filtroMes: '',
+            limiteFilas: 15,
+            idRuptura: null,    // ID del registro que falló la firma
+            soloRupturas: false // Estado del filtro de seguridad
+        },
+
+        init: function () {
+            window.addEventListener('erp-datos-listos', () => {
+                if (window.SISTEMA_ERP.moduloActual === this.meta.id) this.render();
+            });
+            if (window.SISTEMA_ERP?.datos?.['SYS_AUDIT_LOG']) this.render();
+        },
+
+        /**
+         * @function setFiltro
+         * Actualiza el estado y permite filtrar por rupturas de seguridad.
+         */
+        setFiltro: function (key, val) {
+            // Conversión para checkboxes (booleano)
+            if (key === 'soloRupturas') {
+                this.estado[key] = val === true || val === 'true';
+            } else {
+                this.estado[key] = val;
+            }
+            this.render();
+        },
+
+        /**
+         * @function aplicarFiltros
+         * Motor de búsqueda con priorización de fallos de integridad.
+         */
+        aplicarFiltros: function (data) {
+            const ahora = new Date();
+            return data.filter(l => {
+                const f = new Date(l.TIMESTAMP);
+
+                // 🚀 AISLAMIENTO FORENSE: Si el filtro de rupturas está activo
+                if (this.estado.soloRupturas && this.estado.idRuptura) {
+                    return l.ID_LOG === this.estado.idRuptura;
+                }
+
+                const mUser = !this.estado.filtroUser || l.USER_EMAIL === this.estado.filtroUser;
+                const mAcc = !this.estado.filtroAccion || l.ACTION_TYPE === this.estado.filtroAccion;
+                const mMes = !this.estado.filtroMes || (f.getMonth() + 1) === parseInt(this.estado.filtroMes);
+                const mDias = (ahora - f) / 86400000 <= parseInt(this.estado.filtroDias);
+
+                return mUser && mAcc && mMes && mDias;
+            });
+        },
+
+        render: function () {
+            const raw = window.SISTEMA_ERP.datos['SYS_AUDIT_LOG'] || [];
+            const logsFiltrados = this.aplicarFiltros(raw).reverse();
+
+            // 🚀 1. GESTIÓN DE ALERTA GLOBAL (Visible e Impactante)
+            const alertZone = document.getElementById('audit-integrity-alert');
+            if (alertZone) {
+                alertZone.innerHTML = this.estado.idRuptura
+                    ? `<div class="alert alert-danger shadow pulse-danger-glow d-flex justify-content-between align-items-center mb-3">
+                    <div>
+                        <i class="bi bi-exclamation-triangle-fill me-2 fs-5"></i>
+                        <strong>BRECHA DE INTEGRIDAD DETECTADA:</strong> El registro <code>${this.estado.idRuptura}</code> no coincide con su firma digital.
+                    </div>
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-sm btn-dark" onclick="window.Ctrl_Auditoria.setFiltro('soloRupturas', true)">Aislar Error</button>
+                        <button class="btn btn-sm btn-outline-dark" onclick="window.Ctrl_Auditoria.setFiltro('idRuptura', null)">Ignorar</button>
+                    </div>
+                   </div>`
+                    : '';
+            }
+
+            // 🚀 2. MAPA DE DENSIDAD (Lógica de Relevancia para Relato)
+            const mapaDensidad = {};
+            raw.forEach(l => {
+                let d = {}; try { d = JSON.parse(l.DETALLES || '{}'); } catch (e) { }
+                if (d.session) mapaDensidad[d.session] = (mapaDensidad[d.session] || 0) + 1;
+            });
+
+            this.poblarFiltros(raw);
+
+            // 🚀 3. RENDERIZADO ATÓMICO CON FACTORY
+            // FIX V5: Apuntando al contenedor oficial URS-28
+            Factory.crearTabla('v-auditoria-contenedor-principal', {
+                data: logsFiltrados,
+                idKey: 'ID_LOG',
+                config: { rowsPerPage: parseInt(this.estado.limiteFilas), pagination: true, rowSelector: true, columnasCRUD: false },
+                columns: [
+                    {
+                        label: 'Fecha / Registro', key: 'TIMESTAMP',
+                        render: (v, r) => {
+                            const esMalo = r.ID_LOG === this.estado.idRuptura;
+                            return `<div class="${esMalo ? 'fila-hash-corrupto p-1 rounded' : ''}">
+                                    <span class="small font-monospace">${new Date(v).toLocaleString('es-CL')}</span>
+                                    ${esMalo ? '<br><span class="badge-critico"><i class="bi bi-x-octagon"></i> HASH CORRUPTO</span>' : ''}
+                                </div>`;
+                        }
+                    },
+                    { label: 'Operario', key: 'USER_EMAIL', render: (v) => `<b class="text-dark">${v}</b>` },
+                    { label: 'Actividad', key: 'ACTION_TYPE', render: (v) => `<span class="badge bg-light text-dark border extra-small font-monospace">${v}</span>` },
+                    { label: 'Módulo', key: 'MODULO', render: (v) => `<span class="small fw-bold text-uppercase text-primary">${v}</span>` },
+                    {
+                        label: 'Análisis Forense', key: 'ID_LOG',
+                        render: (id, row) => {
+                            let det = {}; try { det = JSON.parse(row.DETALLES || '{}'); } catch (e) { }
+                            const tieneHistoria = det.session && mapaDensidad[det.session] > 1;
+                            const esMutacion = row.VALOR_NUEVO && row.VALOR_NUEVO !== 'N/A';
+
+                            return `
+                        <div class="d-flex gap-1 justify-content-end px-2">
+                            ${tieneHistoria ? `
+                                <button class="btn btn-sm btn-dark px-2 py-1 shadow-sm" onclick="window.Ctrl_Auditoria.abrirRelato('${id}')" title="Ver Historia">
+                                    <i class="bi bi-clock-history"></i>
+                                </button>` : ''}
+                            ${esMutacion ? `
+                                <button class="btn btn-sm btn-success px-2 py-1 shadow-sm fw-bold" onclick="window.Ctrl_Auditoria.abrirDiff('${id}')" title="Ver Cambios">
+                                    <i class="bi bi-file-diff"></i>
+                                </button>` : ''}
+                        </div>`;
+                        }
+                    }
+                ]
+            });
+        },
+
+        /**
+         * @function verificarIntegridad
+         * 🟢 Dispara el motor SHA-256 del servidor.
+         */
+        verificarIntegridad: function () {
+            window.ERP_Utils?.mostrarLoading(true);
+            google.script.run
+                .withSuccessHandler(resStr => {
+                    window.ERP_Utils?.mostrarLoading(false);
+                    const res = JSON.parse(resStr);
+                    if (res.integro) {
+                        this.estado.idRuptura = null;
+                        window.ERP_Utils.mostrarToast("Validación Exitosa: Sin alteraciones.", "success");
+                    } else {
+                        this.estado.idRuptura = res.idRuptura;
+                        window.ERP_Utils.mostrarToast("🚨 FALLO DE SEGURIDAD DETECTADO", "danger");
+                    }
+                    this.render();
+                })
+                .w_verificarIntegridadLogs();
+        },
+
+        abrirRelato: function (idRef) {
+            const raw = window.SISTEMA_ERP.datos['SYS_AUDIT_LOG'] || [];
+            const base = raw.find(l => l.ID_LOG === idRef);
+            if (!base) return;
+
+            let d = {}; try { d = JSON.parse(base.DETALLES || '{}'); } catch (e) { }
+            const sid = d.session;
+
+            const eventos = raw.filter(l => {
+                let det = {}; try { det = JSON.parse(l.DETALLES || '{}'); } catch (e) { }
+                return det.session === sid;
+            }).sort((a, b) => new Date(a.TIMESTAMP) - new Date(b.TIMESTAMP));
+
+            const bodyId = Factory.abrirModal({ titulo: `Línea de Tiempo: ${base.USER_EMAIL}`, tamaño: 'modal-lg' });
+
+            document.getElementById(bodyId).innerHTML = `
+            <div class="p-4">
+                <div class="timeline border-start border-2 ms-2 ps-3" style="border-color: #198754 !important;">
+                    ${eventos.map(e => {
+                const esCorrupto = e.ID_LOG === this.estado.idRuptura;
+                const esActual = e.ID_LOG === idRef;
+                return `
+                        <div class="mb-3 d-flex align-items-center gap-3 border-bottom pb-2 position-relative ${esCorrupto ? 'bg-danger bg-opacity-10' : (esActual ? 'bg-success bg-opacity-10' : '')}">
+                            <i class="bi bi-circle-fill position-absolute ${esCorrupto ? 'text-danger pulse' : 'text-success'}" style="left: -2.15rem; font-size: 0.6rem; background:white;"></i>
+                            <span class="badge bg-light text-dark border font-monospace" style="font-size:0.7rem">${new Date(e.TIMESTAMP).toLocaleTimeString()}</span>
+                            <div class="small flex-grow-1"><b>${e.ACTION_TYPE}</b> en ${e.MODULO}</div>
+                            ${(e.VALOR_NUEVO && e.VALOR_NUEVO !== 'N/A') ? `<button class="btn btn-success btn-xs fw-bold px-2 py-1 shadow-sm" onclick="window.Ctrl_Auditoria.abrirDiff('${e.ID_LOG}')">DIFF</button>` : ''}
+                        </div>`;
+            }).join('')}
+                </div>
+            </div>`;
+        },
+
+        abrirDiff: function (id) {
+            const log = window.SISTEMA_ERP.datos['SYS_AUDIT_LOG'].find(l => l.ID_LOG === id);
+            if (!log) return;
+            const html = `
+            <div class="p-4">
+                <div class="alert alert-success border-0 py-2 small mb-3 shadow-sm">
+                    <i class="bi bi-shield-check-fill me-2"></i> Inspección Técnica (Estructura de Cambios)
+                </div>
+                <div class="table-responsive rounded border shadow-sm">
+                    <table class="table table-sm table-striped mb-0" style="font-size:0.75rem">
+                        <thead class="table-dark text-center">
+                            <tr><th>Atributo</th><th class="bg-danger bg-opacity-25">Antes</th><th class="bg-success bg-opacity-25">Después</th></tr>
+                        </thead>
+                        <tbody>${this.generarFilasDiff(log.VALOR_ANTERIOR, log.VALOR_NUEVO)}</tbody>
+                    </table>
+                </div>
+                <div class="mt-3 p-2 bg-dark text-success rounded font-monospace extra-small text-break border border-success">
+                    <b>DIGITAL SIGNATURE (SHA-256):</b> ${log.HASH_RECORD}
+                </div>
+            </div>`;
+            window.ERP_Utils.abrirModalDinamico("DETALLE TÉCNICO DE MUTACIÓN", html, 'modal-lg');
+        },
+
+        generarFilasDiff: function (ant, nue) {
+            let oA = {}, oN = {};
+            try { oA = JSON.parse(ant || '{}'); oN = JSON.parse(nue || '{}'); } catch (e) { }
+            const keys = [...new Set([...Object.keys(oA), ...Object.keys(oN)])];
+            return keys.map(k => `<tr><td class="fw-bold text-uppercase extra-small bg-light">${k}</td><td class="text-danger extra-small">${oA[k] || '-'}</td><td class="text-success fw-bold extra-small">${oN[k] || '-'}</td></tr>`).join('');
+        },
+
+        poblarFiltros: function (data) {
+            const sU = document.getElementById('filter-audit-user');
+            const sA = document.getElementById('filter-audit-action');
+            if (sU && sU.options.length <= 1) [...new Set(data.map(l => l.USER_EMAIL))].sort().forEach(u => sU.add(new Option(u, u)));
+            if (sA && sA.options.length <= 1) [...new Set(data.map(l => l.ACTION_TYPE))].sort().forEach(a => sA.add(new Option(a, a)));
+        }
+    };
+
+    // 🚀 FIX V5: Disparador manual eliminado. El Enrutador controla la ejecución.
+</script>

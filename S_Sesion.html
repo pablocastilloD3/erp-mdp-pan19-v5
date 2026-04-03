@@ -1,0 +1,230 @@
+<script>
+    /**
+     * @file S_Sesion.html
+     * @module Sesion
+     * @version 5.1.0
+     * @arquitectura URS-28 / Memory-First / Zero-Trust
+     * @reparacion [V5.1.0] Absorción de Telemetría UI y creación de Identidad Global.
+     */
+
+    window.Ctrl_Sesion = {
+        meta: {
+            id: 'sesion',
+            version: '5.1.0',
+            titulo: 'Monitor de Seguridad',
+            icono: 'bi-shield-shaded',
+            tematica: 'Sistema',
+            seguridad: { permisos: ['*'], nivel_acceso: 1 }
+        },
+
+        estado: {
+            timeout_total: 15 * 60 * 1000,
+            timeout_aviso: 13 * 60 * 1000,
+            ip_cliente: 'CAPTURANDO...',
+            hora_objetivo_aviso: null,
+            hora_objetivo_cierre: null,
+            sesion_activa: false
+        },
+
+        timers: { conteo: null, heartbeat: null },
+
+        init: function () {
+            console.log("🛡️ [Sesion] Vigilancia URS-28 activada.");
+            this.capturarDatosConexion();
+            this.vincularInteracciones();
+        },
+
+        render: function () {
+            console.log("🛡️ [Sesion] Interfaz base cargada.");
+        },
+
+        capturarDatosConexion: async function () {
+            try {
+                const r = await fetch('https://api.ipify.org?format=json');
+                const d = await r.json();
+                this.estado.ip_cliente = d.ip;
+                window.SISTEMA_ERP.ipCliente = d.ip;
+                console.log(`🌐 [Sesion] IP Identificada: ${d.ip}`);
+                return d.ip;
+            } catch (e) {
+                this.estado.ip_cliente = '0.0.0.0';
+                return '0.0.0.0';
+            }
+        },
+
+        iniciarAutenticacion: async function () {
+            if (window.SISTEMA_ERP.authEnProgreso) return;
+            window.SISTEMA_ERP.authEnProgreso = true;
+
+            console.log("🌐 [Sesion] Identificando punto de origen...");
+            const ip = await this.capturarDatosConexion();
+
+            console.log(`🛡️ [Sesion] Handshake Zero Trust iniciado con IP: ${ip}`);
+
+            google.script.run
+                .withSuccessHandler(resStr => {
+                    window.SISTEMA_ERP.authEnProgreso = false;
+                    try {
+                        const res = JSON.parse(resStr);
+                        if (res.authorized) {
+                            this.estado.sesion_activa = true;
+                            window.SISTEMA_ERP.usuarioActual = res.email;
+
+                            // 🚀 FIX V5.1.0: Creación de Billetera Global (Memory-First)
+                            window.SISTEMA_ERP.identidad = {
+                                email: res.email,
+                                nombre: (res.nombres && res.nombres.trim() !== "") ? res.nombres : res.email,
+                                rol: res.nombre_rol || 'Nivel ' + res.nivel_acceso
+                            };
+
+                            this.reiniciarReloj();
+
+                            // 🚀 FIX V5.1.0: Pintar DOM inmediatamente (Latencia Cero)
+                            this.actualizarTelemetriaUI();
+
+                            console.log(`✅ [Sesion] Identidad validada: ${res.email}`);
+
+                            const permisosFinales = JSON.parse(res.matriz_permisos || '[]');
+
+                            window.dispatchEvent(new CustomEvent('erp-auth-success', {
+                                detail: {
+                                    usuario: res.email,
+                                    permisos: permisosFinales,
+                                    nombres: res.nombres,
+                                    rol: res.nombre_rol
+                                }
+                            }));
+                        } else { this.pintarPantallaBloqueo(res.status || 'ACCESO DENEGADO'); }
+                    } catch (e) { this.pintarPantallaBloqueo('ERROR DE INTEGRIDAD'); }
+                })
+                .withFailureHandler(() => {
+                    window.SISTEMA_ERP.authEnProgreso = false;
+                    this.pintarPantallaBloqueo('FALLO DE COMUNICACIÓN');
+                })
+                .w_verificarIdentidadZeroTrust(ip);
+        },
+
+        // 🚀 FIX V5.1.0: Nuevo método inyector de UI migrado desde S_Seguridad
+        actualizarTelemetriaUI: function () {
+            const iden = window.SISTEMA_ERP.identidad;
+            if (!iden) return;
+
+            const mapDOM = [
+                { ids: ['lbl-user-name', 'nav-user-name'], valor: iden.nombre },
+                { ids: ['lbl-user-rol', 'nav-user-rol'], valor: iden.rol },
+                { ids: ['lbl-user-email', 'nav-user-email'], valor: iden.email }
+            ];
+
+            mapDOM.forEach(grupo => {
+                grupo.ids.forEach(id => {
+                    const el = document.getElementById(id);
+                    if (el) el.innerText = grupo.valor;
+                });
+            });
+        },
+
+        logout: function () {
+            if (!confirm("¿Desea finalizar su sesión de forma segura?")) return;
+            this.ejecutarCierre('AUTH_LOGOUT');
+        },
+
+        vincularInteracciones: function () {
+            const eventos = ['mousedown', 'keypress', 'scroll', 'touchstart'];
+            eventos.forEach(ev => {
+                document.addEventListener(ev, () => {
+                    const modal = document.getElementById('modal-sesion-aviso');
+                    if (modal && modal.classList.contains('show')) return;
+                    if (this.estado.sesion_activa) this.reiniciarReloj();
+                }, true);
+            });
+        },
+
+        reiniciarReloj: function () {
+            if (this.timers.heartbeat) clearInterval(this.timers.heartbeat);
+            this.estado.hora_objetivo_aviso = Date.now() + this.estado.timeout_aviso;
+            this.timers.heartbeat = setInterval(() => {
+                if (Date.now() >= this.estado.hora_objetivo_aviso) {
+                    clearInterval(this.timers.heartbeat);
+                    this.lanzarAviso();
+                }
+            }, 1000);
+        },
+
+        lanzarAviso: function () {
+            this.estado.hora_objetivo_cierre = Date.now() + (120 * 1000);
+            this.renderModal();
+            const modalEl = document.getElementById('modal-sesion-aviso');
+            const modalBS = bootstrap.Modal.getOrCreateInstance(modalEl);
+            modalBS.show();
+
+            if (this.timers.conteo) clearInterval(this.timers.conteo);
+            this.timers.conteo = setInterval(() => {
+                let tiempoRestante = Math.ceil((this.estado.hora_objetivo_cierre - Date.now()) / 1000);
+                if (tiempoRestante <= 0) {
+                    tiempoRestante = 0;
+                    this.ejecutarCierre('SESSION_TIMEOUT');
+                }
+                const lbl = document.getElementById('lbl-conteo-sesion');
+                if (lbl) lbl.innerText = tiempoRestante;
+            }, 1000);
+        },
+
+        extenderSesion: function () {
+            if (this.timers.conteo) clearInterval(this.timers.conteo);
+            this.reiniciarReloj();
+        },
+
+        ejecutarCierre: function (motivo) {
+            console.warn(`🚨 [Sesion] Ejecutando cierre: ${motivo}`);
+            if (this.timers.heartbeat) clearInterval(this.timers.heartbeat);
+            if (this.timers.conteo) clearInterval(this.timers.conteo);
+
+            this.estado.sesion_activa = false;
+            const ipFinal = this.estado.ip_cliente;
+
+            google.script.run
+                .withSuccessHandler(() => {
+                    window.SISTEMA_ERP.datos = {};
+                    window.SISTEMA_ERP.identidad = null;
+                    window.SISTEMA_ERP.usuarioActual = null;
+                    this.pintarPantallaBloqueo(motivo);
+                })
+                .w_registrarLogForense(motivo, 'SISTEMA', 'N/A', `Cierre: ${motivo}`, ipFinal);
+        },
+
+        renderModal: function () {
+            if (document.getElementById('modal-sesion-aviso')) return;
+            const html = `
+            <div class="modal fade" id="modal-sesion-aviso" data-bs-backdrop="static" tabindex="-1">
+                <div class="modal-dialog modal-dialog-centered">
+                    <div class="modal-content border-0 shadow-lg text-center">
+                        <div class="modal-header bg-dark text-warning border-0 py-2 px-3">
+                            <h6 class="modal-title small fw-bold mx-auto">CENTINELA DE SEGURIDAD</h6>
+                        </div>
+                        <div class="modal-body p-4">
+                            <h1 class="display-3 fw-bold text-primary mb-0" id="lbl-conteo-sesion">120</h1>
+                            <p class="text-muted small text-uppercase">Segundos para desconexión</p>
+                            <div class="d-grid gap-2 mt-4">
+                                <button class="btn btn-primary fw-bold py-2 rounded-pill" onclick="window.Ctrl_Sesion.extenderSesion()" data-bs-dismiss="modal">MANTENER CONEXIÓN</button>
+                                <button class="btn btn-link text-danger small" onclick="window.Ctrl_Sesion.ejecutarCierre('AUTH_LOGOUT')">Cerrar ahora</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>`;
+            document.body.insertAdjacentHTML('beforeend', html);
+        },
+
+        pintarPantallaBloqueo: function (motivo) {
+            document.body.innerHTML = `
+            <div class="d-flex align-items-center justify-content-center vh-100 bg-dark text-white p-4">
+                <div class="text-center p-5 rounded-4 border border-secondary bg-black bg-opacity-25" style="max-width: 450px;">
+                    <i class="bi bi-shield-slash text-danger mb-4" style="font-size: 5rem;"></i>
+                    <h2 class="fw-bold mb-3">CONEXIÓN CERRADA</h2>
+                    <p class="text-muted small">IP REGISTRADA: ${this.estado.ip_cliente}</p>
+                    <button class="btn btn-outline-primary rounded-pill px-5 fw-bold mt-4" onclick="location.reload()">RECONECTAR</button>
+                </div>
+            </div>`;
+        }
+    };
+</script>

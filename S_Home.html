@@ -1,0 +1,66 @@
+<script>
+    /**
+    * @file S_Home.html
+    * @version 4.0.0
+    * @project ERP MDP PAN19 - Sistema de Gestión Industrial
+    * @author Murphy - Arquitecto PMDC
+    * @compliance ISO 22000 / SII Chile / URS-28
+    * @description Controlador del Panel de Control (Home) con enfoque en rendimiento, seguridad y escalabilidad. Implementa un sistema de renderizado eficiente, gestión de estado local, y adherencia estricta a los permisos de usuario para garantizar una experiencia personalizada y segura.
+    * @lastUpdate 2026-04-01
+    */
+
+    // 1. LEY DEL ESCÁNER: Declaración obligatoria con 'var'
+    var Ctrl_Home = {
+        // 🛡️ Pasaporte del módulo para el Auto-Descubrimiento (ADC)
+        meta: {
+            id: 'home',
+            titulo: 'Panel de Control',
+            icono: 'bi-house-door',
+            tematica: 'Dashboard',
+            iconoTematica: 'bi-grid',
+            descripcion: 'Resumen operativo del ERP',
+            version: '4.0.0',
+            permisos: ['home'] // O ['*'] si es de acceso universal
+        },
+
+        // 2. ESTADO LOCAL (Protección Failsafe Anti-Leak)
+        estado: {
+            cargado: false,
+            datosRAM: [] // Caché local para manipulaciones rápidas de KPIs
+        },
+
+        /**
+         * 3. FUNCIÓN DE ARRANQUE (Motor de Ignición disparado por Scripts_Main)
+         * @lifecycle init
+         */
+        init: function () {
+            // Semáforo Anti-Fugas de Memoria
+            if (!this.estado.cargado) {
+                console.log("🟢 [ADC] Home: Inicializando motor base...");
+
+                // Aquí se anclarían los EventListeners (clics de botones, selectores) 
+                // una sola vez en toda la vida de la sesión.
+
+                this.estado.cargado = true;
+            }
+
+            // Siempre se renderiza al ser invocado por el enrutador
+            this.render();
+        },
+
+        /**
+         * 4. RENDERIZADO Y LÓGICA DE VISTA
+         * @lifecycle render
+         */
+        render: function () {
+            console.log("[ADC] Home: Renderizando datos en caliente...");
+
+            // Verificación de integridad: ¿Tenemos datos en la RAM?
+            if (!window.SISTEMA_ERP || !window.SISTEMA_ERP.datos) return;
+
+            // EJEMPLO DE FUTURA LÓGICA:
+            // const ordenes = window.SISTEMA_ERP.datos['PRODUCCION_MES'] || [];
+            // document.getElementById('kpi-ordenes-activas').innerText = ordenes.length;
+        }
+    };
+</script>
