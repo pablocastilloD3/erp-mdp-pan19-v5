@@ -45,21 +45,26 @@ function w_verificarIdentidadZeroTrust(ip) {
     }
 
     // 3. VALIDACIÓN DE ROL Y PERMISOS
-    var matrizPermisosStr = '[]';
-    var nombreRol = 'Sin Rol';
-    var wsRoles = ss.getSheetByName('MAESTRO_ROLES');
-    var rolesData = wsRoles.getDataRange().getValues();
-    var roleHeaders = rolesData[0].map(function (h) { return String(h).trim().toUpperCase(); });
-    var rolRow = rolesData.slice(1).find(function (r) {
-      return parseInt(r[roleHeaders.indexOf('ID_ROL')]) === nivelAcceso;
-    });
+    let matrizPermisosStr = '[]';
+    let nombreRol = 'Sin Rol';
 
-    if (rolRow && String(rolRow[roleHeaders.indexOf('STATUS')]).trim().toUpperCase() === 'ACTIVO') {
-      matrizPermisosStr = rolRow[roleHeaders.indexOf('PERMISOS_JSON')] || '[]';
-      nombreRol = rolRow[roleHeaders.indexOf('NOMBRE_ROL')] || ('Rol ' + nivelAcceso);
+    // 🚀 FIX V6.0.1: Intercepción absoluta para el Rol SUPER (Nivel 1)
+    if (nivelAcceso === 1) {
+      matrizPermisosStr = '["*"]';
+      nombreRol = 'SUPER';
     } else {
-      registrarLogInterno('AUTH_REJECT', 'SEGURIDAD', uuid, 'N/A', 'N/A', 'Rol inválido: ' + nivelAcceso, ip);
-      return JSON.stringify({ authorized: false, status: 'ROL_INACTIVO', email: emailStr });
+      const wsRoles = ss.getSheetByName('MAESTRO_ROLES');
+      const rolesData = wsRoles.getDataRange().getValues();
+      const roleHeaders = rolesData[0].map(h => String(h).trim().toUpperCase());
+      const rolRow = rolesData.slice(1).find(r => parseInt(r[roleHeaders.indexOf('ID_ROL')]) === nivelAcceso);
+
+      if (rolRow && String(rolRow[roleHeaders.indexOf('STATUS')]).trim().toUpperCase() === 'ACTIVO') {
+        matrizPermisosStr = rolRow[roleHeaders.indexOf('PERMISOS_JSON')] || '[]';
+        nombreRol = rolRow[roleHeaders.indexOf('NOMBRE_ROL')] || `Rol ${nivelAcceso}`;
+      } else {
+        registrarLogInterno('AUTH_REJECT', 'SEGURIDAD', uuid, 'N/A', 'N/A', `Rol inválido: ${nivelAcceso}`, ip);
+        return JSON.stringify({ authorized: false, status: 'ROL_INACTIVO', email: emailStr });
+      }
     }
 
     // 4. REGISTRO FORENSE DE ÉXITO

@@ -1,11 +1,10 @@
 <script>
     /**
      * @file Scripts_Main.html
-     * @description Núcleo SPA Consolidado v5.1.0 (URS-28 / ISO 22000).
-     * @reparacion [V5.1.0] Enrutamiento Inteligente, Kill-Switch en Vivo y Hot-Reload de RBAC.
+     * @description Núcleo SPA Consolidado v5.1.5 (URS-28 / ISO 22000).
+     * @reparacion [V5.1.5] Sincronización en vivo de Telemetría (Rol Visual) durante Hot-Reload.
      */
 
-    // 1. BÓVEDA DE ESTADO GLOBAL
     window.SISTEMA_ERP = window.SISTEMA_ERP || {
         modulos: {},
         datos: {},
@@ -15,74 +14,82 @@
         bootComplete: false
     };
 
-    /**
-     * ============================================================================
-     * 2. ESCUCHA DE EVENTOS DE SISTEMA (Orquestación)
-     * ============================================================================
-     */
+    // ============================================================================
+    // 1. ESCUCHA DE EVENTOS DE SISTEMA (Aterrizaje Único)
+    // ============================================================================
     window.addEventListener('erp-auth-success', (e) => {
         console.log("🔓 [NÚCLEO] Sesión validada. Evaluando matriz de aterrizaje...");
-
         window.SISTEMA_ERP.estadoSesion = 'ACTIVA';
 
         if (!window.Ctrl_Enrutamiento) window.Ctrl_Enrutamiento = {};
         const permisos = e.detail.permisos || [];
         window.Ctrl_Enrutamiento.permisosCacheados = permisos;
 
-        // 🚀 FIX V5.1.0: ENRUTAMIENTO INTELIGENTE DE ARRANQUE
         if (typeof navegarA === 'function') {
             if (permisos.includes('*') || permisos.includes('home')) {
-                navegarA('home'); // Descenso normal
+                navegarA('home');
             } else {
-                // Buscar el primer módulo permitido si no puede ver el Dashboard
                 const primerModulo = Object.keys(window.SISTEMA_ERP.modulos).find(key =>
                     key !== 'enrutamiento' && key !== 'sesion' && permisos.includes(key)
                 );
-
                 if (primerModulo) {
-                    navegarA(primerModulo); // Aterrizaje táctico
+                    navegarA(primerModulo);
                 } else {
-                    // Si no tiene acceso a NADA operativo, abortar misión
                     console.error("🚨 [NÚCLEO] Usuario sin accesos operativos.");
                     if (window.Ctrl_Sesion) window.Ctrl_Sesion.ejecutarCierre('SIN_PRIVILEGIOS_BASE');
                 }
             }
         }
-    });
+    }, { once: false });
 
-    // 🚀 FIX V5.1.0: CENTINELA ZERO-TRUST (Kill-Switch y Hot-Reload)
+    // ============================================================================
+    // 2. CENTINELA ZERO-TRUST (Kill-Switch y Hot-Reload Resucitado)
+    // ============================================================================
     window.addEventListener('erp-datos-listos', () => {
         if (window.SISTEMA_ERP.estadoSesion !== 'ACTIVA') return;
 
-        // Buscar la identidad en la bóveda
         const email = window.SISTEMA_ERP.identidad?.email || window.SISTEMA_ERP.usuarioActual;
         if (!email) return;
 
         const usuarios = window.SISTEMA_ERP.datos['MAESTRO_USUARIOS'];
         const roles = window.SISTEMA_ERP.datos['MAESTRO_ROLES'];
+        if (!usuarios || !roles || usuarios.length === 0) return;
 
-        if (!usuarios || !roles) return;
+        const userRow = usuarios.find(u => String(u.EMAIL || '').toLowerCase() === String(email).toLowerCase());
 
-        // Buscar estado actual en RAM
-        const userRow = usuarios.find(u => String(u.EMAIL).toLowerCase() === String(email).toLowerCase());
-
-        // 💀 1. KILL-SWITCH: Ejecución inmediata si el estado cambia a INACTIVO
-        if (!userRow || userRow.STATUS !== 'ACTIVO') {
+        if (!userRow || String(userRow.STATUS).toUpperCase() !== 'ACTIVO') {
             console.error(`🚨 [ZERO TRUST] Cuenta inactiva o eliminada en caliente: ${email}`);
             if (window.Ctrl_Sesion) window.Ctrl_Sesion.ejecutarCierre('CUENTA_DESACTIVADA');
             return;
         }
 
-        // 🔄 2. HOT-RELOAD DE PERMISOS: Recalcular matriz en vivo
-        const idRol = userRow.NIVEL_ACCESO;
-        const rolRow = roles.find(r => String(r.ID_ROL) === String(idRol) && r.STATUS === 'ACTIVO');
-
+        const idRol = String(userRow.NIVEL_ACCESO);
         let nuevosPermisos = [];
-        if (rolRow) {
-            try { nuevosPermisos = JSON.parse(rolRow.PERMISOS_JSON || '[]'); } catch (e) { }
+        let nuevoNombreRol = 'Desconocido'; // 🚀 FIX V5.1.5: Capturador de nombre de rol
+
+        if (idRol === "1") {
+            nuevosPermisos = ["*"];
+            nuevoNombreRol = "SUPER"; // 🚀 FIX V5.1.5: Asignación explícita visual
+        } else {
+            const rolRow = roles.find(r => String(r.ID_ROL) === idRol && String(r.STATUS).toUpperCase() === 'ACTIVO');
+            if (rolRow) {
+                try { nuevosPermisos = JSON.parse(rolRow.PERMISOS_JSON || '[]'); } catch (e) { }
+                nuevoNombreRol = rolRow.NOMBRE_ROL || `Nivel ${idRol}`; // 🚀 FIX V5.1.5: Captura visual
+            }
         }
 
-        // Comparamos si hubo una mutación de permisos
+        // 🚀 FIX V5.1.5: Sincronización Visual en Tiempo Real
+        if (window.SISTEMA_ERP.identidad) {
+            if (window.SISTEMA_ERP.identidad.rol !== nuevoNombreRol) {
+                console.log(`🔄 [NÚCLEO] Cambio visual de rol detectado: ${window.SISTEMA_ERP.identidad.rol} -> ${nuevoNombreRol}`);
+                window.SISTEMA_ERP.identidad.rol = nuevoNombreRol;
+                if (window.Ctrl_Sesion && typeof window.Ctrl_Sesion.actualizarTelemetriaUI === 'function') {
+                    window.Ctrl_Sesion.actualizarTelemetriaUI();
+                }
+            }
+        }
+
+        // Evaluación lógica de Enrutamiento y Permisos
         if (window.Ctrl_Enrutamiento) {
             const strViejos = JSON.stringify(window.Ctrl_Enrutamiento.permisosCacheados || []);
             const strNuevos = JSON.stringify(nuevosPermisos);
@@ -90,17 +97,13 @@
             if (strViejos !== strNuevos) {
                 console.warn("🔄 [NÚCLEO] Actualización de matriz RBAC detectada en caliente.");
                 window.Ctrl_Enrutamiento.permisosCacheados = nuevosPermisos;
-
-                // Reconstruir UI visual del menú
                 window.Ctrl_Enrutamiento.construirMenuGenerativo(nuevosPermisos);
 
-                // ⛔ 3. DESALOJO EN CALIENTE: ¿El usuario sigue teniendo derecho de estar donde está?
                 const modActual = window.SISTEMA_ERP.moduloActual;
                 if (!nuevosPermisos.includes('*') && !nuevosPermisos.includes(modActual)) {
                     console.warn(`🚨 [ZERO TRUST] Permiso revocado en caliente para módulo: ${modActual}`);
-                    window.ERP_Utils?.mostrarToast("Acceso revocado por el administrador.", "danger");
+                    if (window.ERP_Utils?.mostrarToast) window.ERP_Utils.mostrarToast("Acceso revocado por el administrador.", "danger");
 
-                    // Intentamos un escape táctico
                     if (nuevosPermisos.includes('home')) {
                         navegarA('home');
                     } else {
@@ -115,12 +118,9 @@
         }
     });
 
-
-    /**
-     * ============================================================================
-     * 3. BOOTSTRAPPER UNIFICADO (Punto de Entrada Único)
-     * ============================================================================
-     */
+    // ============================================================================
+    // 3. BOOTSTRAPPER UNIFICADO
+    // ============================================================================
     window.addEventListener('load', () => {
         if (sessionStorage.getItem('boot_crash_loop')) {
             document.body.innerHTML = `<div class="d-flex flex-column justify-content-center align-items-center vh-100 bg-dark text-white text-center">
@@ -137,20 +137,10 @@
         if (window.SISTEMA_ERP.bootComplete) return;
         window.SISTEMA_ERP.bootComplete = true;
 
-        console.log("🚀 [NÚCLEO] Iniciando Bootloader...");
-
         ejecutarADC();
-
-        if (window.Ctrl_Sesion) {
-            window.Ctrl_Sesion.iniciarAutenticacion();
-        } else {
-            console.error("❌ [NÚCLEO] No se encontró el controlador S_Sesion.");
-        }
+        if (window.Ctrl_Sesion) window.Ctrl_Sesion.iniciarAutenticacion();
     });
 
-    /**
-     * @function ejecutarADC
-     */
     function ejecutarADC() {
         const prefijo = 'Ctrl_';
         let detectados = 0;
@@ -164,29 +154,30 @@
                 }
             }
         });
-        console.log(`✅ [ADC] Bóveda montada. Módulos: ${detectados}`);
     }
 
-    /**
-     * ============================================================================
-     * 4. ENRUTADOR ZERO TRUST
-     * ============================================================================
-     */
+    // ============================================================================
+    // 4. ENRUTADOR ZERO TRUST
+    // ============================================================================
     window.navegarA = function (idModulo, event) {
         if (event) event.preventDefault();
-
         if (window.SISTEMA_ERP.estadoSesion !== 'ACTIVA') return;
 
         const id = String(idModulo).toLowerCase();
         const mod = window.SISTEMA_ERP.modulos[id];
 
-        // 🛡️ REGLA ZERO TRUST
-        const permisos = (window.Ctrl_Enrutamiento && window.Ctrl_Enrutamiento.permisosCacheados)
+        const permisosRaw = (window.Ctrl_Enrutamiento && window.Ctrl_Enrutamiento.permisosCacheados)
             ? window.Ctrl_Enrutamiento.permisosCacheados : [];
+        const permisos = permisosRaw.map(p => String(p).toLowerCase());
 
         const accesoConcedido = permisos.includes('*') || permisos.includes(id);
 
         if (!accesoConcedido) {
+            if (id === 'home' && window.SISTEMA_ERP.moduloActual !== 'home' && window.SISTEMA_ERP.moduloActual !== 'INICIANDO') {
+                console.warn(`[ZERO TRUST] Petición fantasma a 'home' neutralizada.`);
+                return;
+            }
+
             console.warn(`[ZERO TRUST] Denegado: [${id.toUpperCase()}]`);
             if (window.ERP_Utils?.mostrarToast) {
                 window.ERP_Utils.mostrarToast("Privilegios insuficientes.", "danger");
@@ -194,10 +185,8 @@
             return;
         }
 
-        const moduloPrevio = window.SISTEMA_ERP.moduloActual;
         window.SISTEMA_ERP.moduloActual = id;
 
-        // Swapping de vistas
         document.querySelectorAll('.spa-view').forEach(vista => {
             vista.classList.add('d-none');
             vista.classList.remove('active');
@@ -209,7 +198,6 @@
             targetView.classList.add('active');
         }
 
-        // Actualización de UI Nav
         document.querySelectorAll('#spa-nav-menu .nav-link').forEach(link => {
             link.classList.remove('active', 'fw-bold', 'bg-primary', 'text-white');
             link.classList.add('text-muted');
@@ -225,13 +213,7 @@
         }
     };
 
-    /**
-     * ============================================================================
-     * 5. UTILIDADES DE INTERFAZ
-     * ============================================================================
-     */
     window.ERP_Main = window.ERP_Main || {};
-
     window.ERP_Main.toggleTema = function () {
         const html = document.documentElement;
         const icon = document.getElementById('icon-theme');
@@ -239,11 +221,8 @@
         const nuevoTema = temaActual === 'light' ? 'dark' : 'light';
         html.setAttribute('data-bs-theme', nuevoTema);
         window.SISTEMA_ERP.temaVisual = nuevoTema;
-        if (icon) {
-            icon.className = nuevoTema === 'dark' ? 'bi bi-brightness-high-fill text-warning' : 'bi bi-moon-stars-fill text-info';
-        }
+        if (icon) icon.className = nuevoTema === 'dark' ? 'bi bi-brightness-high-fill text-warning' : 'bi bi-moon-stars-fill text-info';
     };
-
     window.ERP_Main.toggleSidebar = function () {
         const sidebar = document.getElementById('sys-sidebar');
         if (sidebar) sidebar.classList.toggle('phantom-collapsed');

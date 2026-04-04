@@ -87,6 +87,10 @@ function w_verificarEstadoSesion(moduloRequerido) {
 
     if (!moduloRequerido) return true;
 
+    // 🚀 FIX CRÍTICO: Reconocimiento absoluto del Rol SUPER (Nivel 1) en el Backend
+    var idRol = String(userRow[idxRol]);
+    if (idRol === "1") return true;
+
     // Validación de Permisos (Matriz de Roles)
     var sheetRoles = ss.getSheetByName(CONFIG.DB.ROLES);
     var dataRoles = sheetRoles.getDataRange().getValues();
@@ -94,7 +98,7 @@ function w_verificarEstadoSesion(moduloRequerido) {
     var idxIdRol = headRoles.indexOf('ID_ROL');
     var idxPermisos = headRoles.indexOf('PERMISOS_JSON');
 
-    var rolRow = dataRoles.find(function (r) { return String(r[idxIdRol]) === String(userRow[idxRol]); });
+    var rolRow = dataRoles.find(function (r) { return String(r[idxIdRol]) === idRol; });
     if (!rolRow) return false;
 
     var permisosArr = JSON.parse(rolRow[idxPermisos] || '[]');
@@ -228,33 +232,33 @@ function w_EjecutarTransaccionSegura(idTablaConfig, idRegistro, nuevosDatos, ipC
 
 /**
  * ============================================================================
- * 3. MOTOR DE HIDRATACIÓN (BATCH GET SERVICE)
+ * 3. MOTOR DE HIDRATACIÓN (FALLBACK NATIVO V5.1)
  * ============================================================================
  */
 function getDatabaseCompleta() {
-  var LOCK = LockService.getScriptLock();
+  const LOCK = LockService.getScriptLock();
   try {
     LOCK.waitLock(5000);
-    var userEmail = Session.getActiveUser().getEmail();
+    const userEmail = Session.getActiveUser().getEmail();
     if (!userEmail) throw new Error("Sesión Inválida");
 
-    var ss = SpreadsheetApp.getActiveSpreadsheet();
-    var spreadsheetId = ss.getId();
-    var nombresPestañas = Object.values(CONFIG.DB);
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const nombresPestañas = Object.values(CONFIG.DB);
+    const dbSaneada = {};
 
-    var response = Sheets.Spreadsheets.Values.batchGet(spreadsheetId, {
-      ranges: nombresPestañas,
-      valueRenderOption: 'UNFORMATTED_VALUE',
-      dateTimeRenderOption: 'FORMATTED_STRING'
-    });
-
-    var dbSaneada = {};
-    response.valueRanges.forEach(function (rangoData, index) {
-      dbSaneada[nombresPestañas[index]] = rangoData.values || [];
+    // 🚀 FIX V5.1: Uso de SpreadsheetApp nativo. Inmune a configuraciones de API.
+    nombresPestañas.forEach(nombre => {
+      const sheet = ss.getSheetByName(nombre);
+      if (sheet) {
+        dbSaneada[nombre] = sheet.getDataRange().getValues();
+      } else {
+        dbSaneada[nombre] = [];
+      }
     });
 
     return JSON.stringify(dbSaneada);
   } catch (error) {
+    console.error("❌ Fallo en Hidratación:", error);
     return JSON.stringify({ error: true, message: error.message });
   } finally {
     LOCK.releaseLock();
@@ -419,7 +423,10 @@ function w_verificarIntegridadLogs() {
  * 6. PUENTES PARA EL FRONTEND
  * ============================================================================
  */
-function w_obtenerDataMaestra() { return JSON.parse(getDatabaseCompleta()); }
+// 🚀 FIX V6.0.1: Retornar el string crudo para evitar destrucción del payload en el servidor
+function w_obtenerDataMaestra() {
+  return getDatabaseCompleta();
+}
 
 function w_getSystemTelemetry() {
   return JSON.stringify({
@@ -437,10 +444,6 @@ function w_registrarAuditoriaFrontend(acc, mod, id, det, ant, nvo) {
   return registrarLogInterno(acc, mod, id, ant, nvo, det, 'FRONTEND_REQUEST');
 }
 
-/**
- * @function w_registrarLogForense
- * @description Puente para S_Sesion. Redirige al motor SHA-256 canónico.
- */
 function w_registrarLogForense(motivo, modulo, id, detalles, ip) {
   return registrarLogInterno(motivo, modulo, id, 'N/A', 'N/A', detalles, ip);
 }

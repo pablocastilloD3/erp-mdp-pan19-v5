@@ -1,27 +1,23 @@
 <script>
     /**
      * @file Utils.html
-     * @description Motor de Hidratación y Centinela v5.3.0 (URS-28 / ISO 22000).
-     * @version 5.3.0
+     * @description Motor de Hidratación y Centinela v5.3.1 (URS-28 / ISO 22000).
+     * @version 5.3.1
      * @reparacion [P8] Implementación de Interceptor Zero Trust (Hot Kick). 
      * @reparacion [V5] Consolidación de Bóveda Singleton (Evita destrucción de estado).
+     * @reparacion [V5.3.1] Exorcismo de navegación fantasma ('home') tras descarga de RAM.
      */
 
-    // 🚀 FIX: Patrón Singleton para no destruir propiedades inyectadas por Scripts_Main
     window.SISTEMA_ERP = window.SISTEMA_ERP || {};
     Object.assign(window.SISTEMA_ERP, {
         moduloActual: window.SISTEMA_ERP.moduloActual || 'home',
-        datos: window.SISTEMA_ERP.datos || {},      // Aquí va la RAM (tablas)
-        modulos: window.SISTEMA_ERP.modulos || {},    // Controladores
+        datos: window.SISTEMA_ERP.datos || {},
+        modulos: window.SISTEMA_ERP.modulos || {},
         ipCliente: window.SISTEMA_ERP.ipCliente || "0.0.0.0",
         estadoSesion: window.SISTEMA_ERP.estadoSesion || 'INIT'
     });
 
     window.ERP_Utils = {
-        /**
-         * @function actualizarSplash
-         * @description Actualiza la interfaz de la pantalla de carga dinámicamente
-         */
         actualizarSplash: function (estadoPrincipal, estadoSecundario, porcentaje) {
             const txtMain = document.getElementById('splash-status-text');
             const txtSub = document.getElementById('splash-sub-text');
@@ -32,15 +28,11 @@
             if (barra && porcentaje) barra.style.width = porcentaje + '%';
         },
 
-        /**
-         * @function capturarIP
-         * @description Obtiene la IP pública del cliente para la auditoría forense
-         */
         capturarIP: async function () {
             try {
                 const response = await fetch('https://api.ipify.org?format=json');
                 const data = await response.json();
-                window.SISTEMA_ERP.ipCliente = data.ip; // Guarda en el objeto global
+                window.SISTEMA_ERP.ipCliente = data.ip;
             } catch (e) {
                 window.SISTEMA_ERP.ipCliente = "0.0.0.0";
             }
@@ -76,13 +68,6 @@
         // 0. INTERCEPTOR ZERO TRUST (HOT KICK)
         // ====================================================================
 
-        /**
-         * @function procesarRespuestaZeroTrust
-         * @description Evalúa el payload del servidor. Si detecta un error tipo 'FATAL_AUTH',
-         * ejecuta la expulsión del usuario. Si no, devuelve el objeto parseado.
-         * @param {string} resStr Respuesta JSON cruda del servidor
-         * @returns {Object|boolean} El objeto JSON o false si hubo un Hot Kick
-         */
         procesarRespuestaZeroTrust: function (resStr) {
             try {
                 const res = JSON.parse(resStr);
@@ -91,7 +76,6 @@
                     if (window.Ctrl_Seguridad) {
                         window.Ctrl_Seguridad.bloquearPantallaTotal(res.mensaje || "Sesión revocada por el administrador.");
                     } else {
-                        // Fallback de emergencia si Ctrl_Seguridad no está cargado
                         document.body.innerHTML = `<h1 style="color:red;text-align:center;margin-top:20%">ACCESO DENEGADO</h1>`;
                     }
                     return false;
@@ -111,7 +95,7 @@
             google.script.run
                 .withSuccessHandler(resStr => {
                     const res = this.procesarRespuestaZeroTrust(resStr);
-                    if (!res) return; // Abortar si hubo Hot Kick
+                    if (!res) return;
 
                     if (res.success) {
                         const ids = {
@@ -144,23 +128,18 @@
         descargarRAM: function (permisos) {
             console.log("📥 [Utils] Iniciando descarga de RAM (canal canónico)...");
 
-            // 👉 FASE 2: Solicitar Base de Datos (50%)
             this.actualizarSplash('Descargando Datos', 'Conectando con Google Sheets...', 50);
 
             google.script.run
                 .withSuccessHandler(resStr => {
                     try {
-                        // 👉 FASE 3: Mapeo de Matrices (80%)
                         this.actualizarSplash('Hidratando RAM', 'Mapeando matrices de módulos...', 80);
 
                         const resBruto = JSON.parse(resStr);
-                        // Aquí no aplicamos procesarRespuestaZeroTrust porque la descarga de RAM
-                        // no es una acción de escritura, pero podríamos si el backend lo requiere.
                         window.SISTEMA_ERP.datos = this.procesarTablasURS(resBruto);
 
                         console.log("✅ [Utils] RAM Hidratada (descarga inicial).");
 
-                        // 👉 FASE 4: Finalización y limpieza visual (100%)
                         this.actualizarSplash('Sistema Operativo', 'Iniciando interfaz...', 100);
 
                         setTimeout(() => {
@@ -172,17 +151,14 @@
                                     splash.style.display = 'none';
                                     splash.style.zIndex = '-1000';
                                     splash.style.pointerEvents = 'none';
-                                    console.log("💥 [Utils] Splash Screen removido del cálculo de geometría.");
                                 }, 600);
                             }
 
-                            // Notificar a controladores que la data está lista
                             window.dispatchEvent(new CustomEvent('erp-datos-listos'));
 
-                            // Render inicial del menú y navegación
                             if (window.Ctrl_Enrutamiento) {
                                 window.Ctrl_Enrutamiento.construirMenuGenerativo(permisos);
-                                window.navegarA('home');
+                                // 🚀 FIX: El fantasma de navegarA('home') fue erradicado de aquí.
                             }
                         }, 500);
 
@@ -315,9 +291,7 @@
     window.addEventListener('erp-auth-success', function (e) {
         console.log("🔔 [Utils] Señal 'erp-auth-success' capturada. Iniciando protocolo de descarga...");
 
-        // 👉 FASE 1: Post-Autenticación (30%)
         window.ERP_Utils.actualizarSplash('Identidad Confirmada', 'Iniciando telemetría de sesión...', 30);
-
         window.ERP_Utils.hidratarTelemetria();
 
         console.log("⏳ [Utils] Delegando descarga a canal canónico descargarRAM()...");
