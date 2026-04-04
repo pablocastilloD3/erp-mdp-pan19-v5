@@ -67,7 +67,7 @@
             });
         },
 
-        // 🚀 FIX V5.2.1: MOTOR DE SESIONES DINÁMICO (Aislamiento Forense en Memoria)
+        // 🚀 FIX V5.2.2: MOTOR DE SESIONES DINÁMICO (Aislamiento Forense en Memoria)
         _preprocesarSesiones: function (data) {
             if (!data || data.length === 0) return;
             // Evitar doble procesamiento si ya se calculó en este ciclo de RAM
@@ -90,7 +90,10 @@
 
                 // 2. FALLBACK: Si hay un evento pero el usuario no tiene sesión activa (ej. acciones del sistema)
                 if (!sesionesActivas[user]) {
-                    sesionesActivas[user] = `SYS-${user.split('@')[0].toUpperCase().substring(0, 4)}`;
+                    // FIX: Garantizar que cada bloque de sesión fallback sea único para evitar agrupar eventos no relacionados.
+                    const timeHash = new Date(log.TIMESTAMP).getTime().toString().slice(-5);
+                    const randHash = Math.random().toString(36).substring(2, 5).toUpperCase();
+                    sesionesActivas[user] = `SYS-${user.split('@')[0].toUpperCase().substring(0, 4)}-${randHash}`;
                 }
 
                 // 3. AMARRE: Etiquetamos el registro con el ID de sesión vigente
