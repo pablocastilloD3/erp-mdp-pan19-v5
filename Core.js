@@ -73,7 +73,7 @@ function w_verificarEstadoSesion(moduloRequerido) {
     var email = Session.getActiveUser().getEmail();
     if (!email) return false;
 
-    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
     var sheetUsers = ss.getSheetByName(CONFIG.DB.USUARIOS);
     var dataUsers = sheetUsers.getDataRange().getValues();
     var headUsers = dataUsers[0].map(function (h) { return String(h).trim().toUpperCase(); });
@@ -137,7 +137,7 @@ function w_EjecutarTransaccionSegura(idTablaConfig, idRegistro, nuevosDatos, ipC
       return JSON.stringify({ error: true, message: 'Tabla no registrada en CONFIG.DB: ' + idTablaConfig });
     }
 
-    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
     var sheet = ss.getSheetByName(nombreHoja);
     if (!sheet) {
       return JSON.stringify({ error: true, message: 'Hoja no encontrada: ' + nombreHoja });
@@ -340,7 +340,13 @@ function registrarLogInterno(accion, modulo, idEntidad, anterior, nuevo, detalle
     var signature = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, rawContent, Utilities.Charset.UTF_8);
     row[C.HASH_RECORD] = signature.map(function (byte) { return ('0' + (byte & 0xFF).toString(16)).slice(-2); }).join('');
 
-    sheet.appendRow(row);
+    try {
+      sheet.appendRow(row);
+    } catch (e) {
+      console.error('❌ [Auditoría] Fallo CRÍTICO al escribir en la hoja de logs. Verifique que la hoja "' + CONFIG.DB.AUDIT_LOG + '" existe y que tiene permisos de escritura.', e);
+      // No retornar false aquí para permitir que el flujo principal continúe si la auditoría es secundaria.
+    }
+    
     return true;
   } catch (e) {
     console.error('❌ [Auditoría] Error en registrarLogInterno:', e);

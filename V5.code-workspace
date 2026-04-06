@@ -1,0 +1,25 @@
+{
+	"folders": [
+		{
+			"path": "."
+		}
+	],
+	"settings": {
+		"files.exclude": {
+			"**/.git": true,
+			"**/.svn": true,
+			"**/.hg": true,
+			"V5.code-workspace": true,
+			"**/.*": true
+		},
+		"showHideExcludedConfig.ignoreExcludes": [
+			"**/.DS_Store",
+			"**/Thumbs.db",
+		]
+	},
+	"extensions": {
+		"recommendations": [
+			"google.geminicodeassist"
+		]
+	},
+}
