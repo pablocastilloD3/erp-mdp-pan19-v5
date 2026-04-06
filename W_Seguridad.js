@@ -10,17 +10,25 @@
  */
 
 function w_verificarIdentidadZeroTrust(ip) {
+  console.log("🛡️ [W_Seguridad] ==> Entrando a w_verificarIdentidadZeroTrust...");
   var LOCK = LockService.getScriptLock();
   try {
     LOCK.waitLock(10000);
+    console.log("🛡️ [W_Seguridad] ==> 1. Lock adquirido.");
 
     var emailStr = String(Session.getActiveUser().getEmail() || "").toLowerCase().trim();
     if (!emailStr) throw new Error("Identidad de Google no detectada.");
+    console.log("🛡️ [W_Seguridad] ==> 2. Email obtenido: " + emailStr);
 
-    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+    console.log("🛡️ [W_Seguridad] ==> 3. Spreadsheet abierto con ID: " + CONFIG.SPREADSHEET_ID);
+
     var wsUsers = ss.getSheetByName('MAESTRO_USUARIOS');
+    console.log("🛡️ [W_Seguridad] ==> 4. Hoja 'MAESTRO_USUARIOS' obtenida.");
+
     var usersData = wsUsers.getDataRange().getValues();
     var userHeaders = usersData[0].map(function (h) { return String(h).trim().toUpperCase(); });
+    console.log("🛡️ [W_Seguridad] ==> 5. Datos de usuarios cargados.");
 
     var idxEmail = userHeaders.indexOf('EMAIL');
     var userRow = usersData.slice(1).find(function (r) {
@@ -29,10 +37,14 @@ function w_verificarIdentidadZeroTrust(ip) {
 
     // 1. CASO: USUARIO NO EXISTE
     if (!userRow) {
+      console.log("🛡️ [W_Seguridad] ==> 6a. Usuario NO encontrado. Registrando nuevo usuario pendiente.");
       var newUuid = Utilities.getUuid();
       registrarLogInterno('AUTH_REGISTER', 'SEGURIDAD', newUuid, 'N/A', 'PENDIENTE', 'Auto-registro: ' + emailStr, ip);
+      console.log("🛡️ [W_Seguridad] ==> 6b. Registro de auditoría para nuevo usuario completado.");
       return JSON.stringify({ authorized: false, status: 'PENDIENTE', email: emailStr });
     }
+
+    console.log("🛡️ [W_Seguridad] ==> 6. Usuario ENCONTRADO. Procediendo a validar estado y rol.");
 
     var uuid = userRow[userHeaders.indexOf('ID_UUID')];
     var status = String(userRow[userHeaders.indexOf('STATUS')]).trim().toUpperCase();
@@ -83,6 +95,7 @@ function w_verificarIdentidadZeroTrust(ip) {
     });
 
   } catch (error) {
+    console.error("❌ [W_Seguridad] ==> CAPTURA DE ERROR en w_verificarIdentidadZeroTrust: ", error);
     registrarLogInterno('AUTH_ERROR', 'SEGURIDAD', 'N/A', 'N/A', 'N/A', 'Error: ' + error.message, ip);
     return JSON.stringify({ error: true, message: error.message, authorized: false });
   } finally {
@@ -203,7 +216,7 @@ function w_pingSeguridadCache() {
       return JSON.parse(datosCacheados);
     }
 
-    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
     var wsUsers = ss.getSheetByName('MAESTRO_USUARIOS');
     var dataU = wsUsers.getDataRange().getValues();
     var headU = dataU[0].map(function (h) { return String(h).trim().toUpperCase(); });
