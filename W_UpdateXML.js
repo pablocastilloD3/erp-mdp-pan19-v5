@@ -218,6 +218,7 @@ function _logica_ejecutarIntegracionLote(loteDTE, email, correlationId, ip) {
                 MONTO_TOTAL: montoTotalStr,
                 OBSERVACIONES: Number(montoOtrosStr) > 0 ? "Contiene Impuestos Adicionales." : "Integración Lote.",
                 ISO_VENCIMIENTO: dte.fechaVencimiento,
+                ISO_ALERGENOS: String(dte.isoAlergenos || 'NO'), // 🚀 FIX: Herencia de Alérgenos a nivel Factura
                 CONTROL_CALIDAD: 'PENDIENTE',
                 ESTADO_PAGO: 'PENDIENTE',
                 URL_XML: fileXml.getUrl(),
