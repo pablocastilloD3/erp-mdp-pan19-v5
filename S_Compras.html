@@ -1,0 +1,105 @@
+<script>
+    /**
+     * @file S_Compras.html
+     * @description Controlador alineado al Núcleo v6.0.0.
+     */
+
+    window.Ctrl_Compras = {
+        meta: {
+            id: 'compras',
+            titulo: 'Libro de Compras',
+            tematica: 'Compras',
+            icono: 'bi-cart-check-fill'
+        },
+
+        init: function () {
+            console.log("🛠️ [Compras] Inicializando bajo estándar URS-28...");
+            this.render();
+            this.actualizarKPIs();
+        },
+
+        render: function () {
+            // Patrón Memory-First: Datos desde SISTEMA_ERP.datos
+            const datos = window.SISTEMA_ERP.datos.COMPRAS || [];
+
+            Factory.crearTabla('v-compras-contenedor-principal', {
+                data: datos,
+                idKey: 'ID_UUID',
+                columns: [
+                    { label: 'Fecha', key: 'FECHA_EMISION' },
+                    { label: 'Folio', key: 'FOLIO' },
+                    { label: 'Proveedor', key: 'RAZON_SOCIAL' },
+                    { label: 'Total', key: 'MONTO_TOTAL', format: 'currency' },
+                    {
+                        label: 'Estado', key: 'CONTROL_CALIDAD', render: (val) => {
+                            const css = val === 'APROBADO' ? 'success' : 'warning';
+                            return `<span class="badge bg-${css}-subtle text-${css} border border-${css}">${val}</span>`;
+                        }
+                    }
+                ],
+                config: { pagination: true, rowsPerPage: 10 }
+            });
+        },
+
+        actualizarKPIs: function () {
+            const compras = window.SISTEMA_ERP.datos.COMPRAS || [];
+            const mesActual = new Date().getMonth();
+
+            const ivaMes = compras.reduce((acc, c) => {
+                const fecha = new Date(c.FECHA_EMISION);
+                return (fecha.getMonth() === mesActual) ? acc + (Number(c.MONTO_IVA) || 0) : acc;
+            }, 0);
+
+            const pendientes = compras.filter(c => c.CONTROL_CALIDAD === 'PENDIENTE').length;
+
+            document.getElementById('kpi-compras-iva').innerText = Utils.formatCurrency(ivaMes);
+            document.getElementById('kpi-compras-pendientes').innerText = pendientes;
+        },
+
+        calcularImpuestos: function () {
+            const neto = Number(document.getElementById('c_neto').value) || 0;
+            const iva = Math.round(neto * 0.19);
+            document.getElementById('c_iva').value = iva;
+            document.getElementById('c_total').value = neto + iva;
+        },
+
+        abrirModalIngreso: function () {
+            const modalElement = document.getElementById('modal-ingreso-compra');
+            document.getElementById('form-compra-industrial').reset();
+            const modal = new bootstrap.Modal(modalElement);
+            modal.show();
+        },
+
+        guardar: function () {
+            const form = document.getElementById('form-compra-industrial');
+            const formData = new FormData(form);
+            const payload = Object.fromEntries(formData.entries());
+
+            // Protocolo Zero-Trust: Validación de Maestro Proveedores en RAM
+            const prov = window.SISTEMA_ERP.datos.PROVEEDORES.find(p => p.RUT_ENTIDAD === payload.RUT_EMISOR);
+
+            if (!prov) {
+                Utils.notificar("RUT No Registrado: Ingrese al Proveedor en el Maestro antes de continuar.", "danger");
+                return;
+            }
+
+            payload.RAZON_SOCIAL = prov.RAZON_SOCIAL;
+            const btn = document.getElementById('btn-save-compra');
+            btn.disabled = true;
+
+            google.script.run
+                .withSuccessHandler(res => {
+                    const r = JSON.parse(res);
+                    if (r.success) {
+                        Utils.notificar("Registro industrial exitoso", "success");
+                        bootstrap.Modal.getInstance(document.getElementById('modal-ingreso-compra')).hide();
+                        ERP_Utils.descargarRAM(['compras']); // Hot-Reload
+                    } else {
+                        Utils.notificar("Error: " + r.message, "danger");
+                        btn.disabled = false;
+                    }
+                })
+                .wCompras_GuardarFactura(payload);
+        }
+    };
+</script>

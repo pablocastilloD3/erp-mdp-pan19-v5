@@ -1,0 +1,125 @@
+<div id="v-compras-container" class="container-fluid py-4 d-none modulo-pga">
+
+    <div class="row mb-4">
+        <div class="col-12 d-flex justify-content-between align-items-center">
+            <div>
+                <h2 class="fw-bold mb-0 text-dark">
+                    <i id="v-compras-icono" class="bi bi-cart-check-fill me-2 text-primary"></i>
+                    <span id="v-compras-titulo" class="text-uppercase">Libro de Compras</span>
+                </h2>
+                <p class="text-muted small mb-0" id="v-compras-descripcion">
+                    Control de Abastecimiento Industrial y Cumplimiento SII/ISO 22000.
+                </p>
+            </div>
+            <div id="v-compras-acciones-header">
+                <button class="btn btn-primary shadow-sm" onclick="Ctrl_Compras.abrirModalIngreso()">
+                    <i class="bi bi-plus-circle me-2"></i>Nueva Factura / XML
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <hr class="border-2 opacity-25 mb-4">
+
+    <div class="row mb-4 g-3">
+        <div class="col-md-4">
+            <div class="card border-0 shadow-sm bg-primary text-white">
+                <div class="card-body">
+                    <h6 class="small opacity-75">IVA Recuperable (Mes Actual)</h6>
+                    <h3 id="kpi-compras-iva" class="fw-bold mb-0">$ 0</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card border-0 shadow-sm border-start border-warning border-4">
+                <div class="card-body">
+                    <h6 class="text-muted small">Lotes en Cuarentena</h6>
+                    <h3 id="kpi-compras-pendientes" class="fw-bold mb-0 text-warning">0</h3>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row animate__animated animate__fadeInUp">
+        <div class="col-12">
+            <div class="card shadow-sm border-0">
+                <div class="card-body p-0">
+                    <div id="v-compras-contenedor-principal" class="table-responsive" style="min-height: 400px;">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="v-compras-modales">
+        <div class="modal fade" id="modal-ingreso-compra" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog modal-lg border-0">
+                <div class="modal-content shadow-lg">
+                    <div class="modal-header bg-dark text-white">
+                        <h5 class="modal-title fw-bold"><i class="bi bi-shield-lock me-2"></i>Ingreso de DTE Industrial
+                        </h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body bg-light">
+                        <form id="form-compra-industrial">
+                            <div class="row g-3">
+                                <div class="col-md-6">
+                                    <label class="form-label small fw-bold text-muted">RUT Proveedor</label>
+                                    <input type="text" name="RUT_EMISOR" id="c_rut_emisor"
+                                        class="form-control shadow-sm" placeholder="12.345.678-9" required>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label small fw-bold text-muted">Folio</label>
+                                    <input type="number" name="FOLIO" class="form-control shadow-sm" required>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label small fw-bold text-muted">Neto ($)</label>
+                                    <input type="number" name="MONTO_NETO" id="c_neto" class="form-control shadow-sm"
+                                        onchange="Ctrl_Compras.calcularImpuestos()">
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label small fw-bold text-muted">IVA (19%)</label>
+                                    <input type="number" name="MONTO_IVA" id="c_iva"
+                                        class="form-control shadow-sm bg-white" readonly>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label small fw-bold text-muted">Total</label>
+                                    <input type="number" name="MONTO_TOTAL" id="c_total"
+                                        class="form-control shadow-sm bg-white fw-bold" readonly>
+                                </div>
+
+                                <div class="col-12 py-2">
+                                    <div class="alert alert-warning border-0 shadow-sm d-flex align-items-center mb-0">
+                                        <i class="bi bi-exclamation-triangle-fill fs-4 me-3"></i>
+                                        <div>
+                                            <strong class="d-block small text-uppercase">Validación ISO 22000
+                                                Mandatoria</strong>
+                                            <div class="row mt-2 g-2">
+                                                <div class="col-md-6">
+                                                    <input type="text" name="ISO_LOTE"
+                                                        class="form-control form-control-sm"
+                                                        placeholder="Identificador de Lote" required>
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <input type="date" name="ISO_VENCIMIENTO"
+                                                        class="form-control form-control-sm" required>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                    <div class="modal-footer bg-light">
+                        <button type="button" class="btn btn-link text-muted" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="button" class="btn btn-success px-4 fw-bold" id="btn-save-compra"
+                            onclick="Ctrl_Compras.guardar()">
+                            <i class="bi bi-cloud-arrow-up-fill me-2"></i>Registrar Compra
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
