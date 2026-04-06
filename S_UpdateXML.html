@@ -141,16 +141,29 @@
 
             const agrupados = {};
             this.estado.loteProcesado.forEach(dte => {
+
+                // --- INICIO BLOQUE MODIFICADO ---
+                let alergenosDelDocumento = new Set(); // Recolector global de la factura
+
                 dte.items.forEach(item => {
                     const nombreUpper = String(item.nombre).toUpperCase();
                     for (const [categoria, keywords] of Object.entries(matrizAlergenos)) {
                         if (keywords.some(k => nombreUpper.includes(k))) {
-                            if (!item.alergenosDetectados.includes(categoria)) item.alergenosDetectados.push(categoria);
+                            if (!item.alergenosDetectados.includes(categoria)) {
+                                item.alergenosDetectados.push(categoria);
+                            }
                         }
                     }
+                    // Agregamos los alérgenos de este ítem al recolector global del documento
+                    item.alergenosDetectados.forEach(a => alergenosDelDocumento.add(a));
+
                     item.conversion = this._sugerirConversion(item.cantidad, item.unidad, item.nombre);
                     if (item.conversion.modificado) dte.requiereRevisionGranel = true;
                 });
+
+                // 🚀 NUEVO: Definimos el campo ISO_ALERGENOS para el Lote/Factura
+                dte.isoAlergenos = alergenosDelDocumento.size > 0 ? Array.from(alergenosDelDocumento).join(', ') : 'NO';
+                // --- FIN BLOQUE MODIFICADO ---
 
                 const rutLimpio = String(dte.rutEmisor).replace(/\./g, '').trim().toUpperCase();
                 const folioNum = String(Number(dte.folio));
