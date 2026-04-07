@@ -50,7 +50,15 @@ var CONFIG = {
     LOTES: 'ID_UUID',
     CAJA: 'ID_MOVIMIENTO',
     CXP: 'ID_CXP'
-  }
+  },
+
+  COLUMNAS_JSON: [
+    'DETALLE_JSON',
+    'PERMISOS_JSON',
+    'FICHA_TECNICA_JSON',
+    'URL_XML_PDF' // 🚀 FIX: Declaración de nueva columna JSON
+  ]
+
 };
 
 var CONFIG_DETALLE_COMPRAS = {
@@ -71,5 +79,8 @@ var CONFIG_DETALLE_COMPRAS = {
   },
   SCHEMA_JSON: {
     sku: null, nombre: null, cantidad: 0, precio: 0, unidad: 'UN', lote: 'S/L', alergenos: 'OK', iso_status: 'PENDIENTE'
-  }
+  },
+
+
+
 };

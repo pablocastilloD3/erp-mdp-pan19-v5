@@ -222,8 +222,7 @@ function _logica_ejecutarIntegracionLote(loteDTE, email, correlationId, ip) {
                 ISO_ALERGENOS: String(dte.isoAlergenos || 'NO'), // 🚀 FIX: Herencia de Alérgenos a nivel Factura
                 CONTROL_CALIDAD: 'PENDIENTE',
                 ESTADO_PAGO: 'PENDIENTE',
-                URL_XML: fileXml.getUrl(),
-                DETALLE_JSON: JSON.stringify(dte.items)
+                URL_XML_PDF: JSON.stringify({ xml: fileXml.getUrl(), pdf: urlPdf }), // 🚀 FIX: Empaquetado JSON de ambas URLs                DETALLE_JSON: JSON.stringify(dte.items)
             }, ip, correlationId);
             logTablas.push('LIBRO_COMPRAS');
 
