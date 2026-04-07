@@ -21,6 +21,12 @@ function wCompras_GuardarFactura(payload) {
             MONTO_NETO: payload.MONTO_NETO,
             MONTO_IVA: payload.MONTO_IVA,
             MONTO_TOTAL: payload.MONTO_TOTAL,
+
+            // CAMPOS DE PERSISTENCIA PARA MODAL Y RESPALDOS
+            URL_XML: payload.URL_XML,        // Link al archivo XML
+            URL_PDF: payload.URL_PDF,        // Link al archivo PDF (Mismo nombre que XML)
+            DETALLE_JSON: payload.DETALLE_JSON, // Array de productos
+
             ISO_LOTE: payload.ISO_LOTE,
             ISO_VENCIMIENTO: payload.ISO_VENCIMIENTO,
             CONTROL_CALIDAD: 'PENDIENTE'
