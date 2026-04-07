@@ -2,6 +2,7 @@
  * @file W_UpdateXML.gs
  * @version 4.0.0
  * @description Motor Backend DTE: Respaldo PDF, Trazabilidad Contable, Matriz Config Dinámica y Duplicados.
+ * Pasar de V5.2->V5.2-UpdateXML.
  */
 
 function w_updatexml_procesarIntegracion(payloadStr) {
