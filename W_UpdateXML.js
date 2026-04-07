@@ -1,8 +1,7 @@
 /**
  * @file W_UpdateXML.gs
  * @version 4.0.0
- * @description Motor Backend DTE: Respaldo PDF, Trazabilidad Contable, Matriz Config Dinámica y Duplicados.
- * Pasar de V5.2->V5.2-UpdateXML.
+ * @description Motor Backend DTE: Respaldo PDF, Trazabilidad Contable, Matriz Config Dinámica y Duplicados..
  */
 
 function w_updatexml_procesarIntegracion(payloadStr) {
@@ -199,7 +198,10 @@ function _logica_ejecutarIntegracionLote(loteDTE, email, correlationId, ip) {
               </div>`;
 
             const pdfBlob = Utilities.newBlob(htmlRespaldo, MimeType.HTML).getAs(MimeType.PDF).setName(`DTE_${idTransaccionBase}.pdf`);
-            folder.createFile(pdfBlob);
+
+            // 🚀 FIX: Declaramos filePdf y extraemos urlPdf
+            const filePdf = folder.createFile(pdfBlob);
+            const urlPdf = filePdf.getUrl();
             // -------------------------------------------------------------
 
             // 1. PIVOTE PRINCIPAL: LIBRO_COMPRAS (Mapeo exacto de Columnas)
@@ -219,10 +221,11 @@ function _logica_ejecutarIntegracionLote(loteDTE, email, correlationId, ip) {
                 MONTO_TOTAL: montoTotalStr,
                 OBSERVACIONES: Number(montoOtrosStr) > 0 ? "Contiene Impuestos Adicionales." : "Integración Lote.",
                 ISO_VENCIMIENTO: dte.fechaVencimiento,
-                ISO_ALERGENOS: String(dte.isoAlergenos || 'NO'), // 🚀 FIX: Herencia de Alérgenos a nivel Factura
+                ISO_ALERGENOS: String(dte.isoAlergenos || 'NO'), // 🚀 FIX: Heredado del frontend
                 CONTROL_CALIDAD: 'PENDIENTE',
                 ESTADO_PAGO: 'PENDIENTE',
-                URL_XML_PDF: JSON.stringify({ xml: fileXml.getUrl(), pdf: urlPdf }), // 🚀 FIX: Empaquetado JSON de ambas URLs                DETALLE_JSON: JSON.stringify(dte.items)
+                URL_XML_PDF: JSON.stringify({ xml: fileXml.getUrl(), pdf: urlPdf }), // 🚀 FIX: Empaquetado JSON limpio
+                DETALLE_JSON: JSON.stringify(dte.items)
             }, ip, correlationId);
             logTablas.push('LIBRO_COMPRAS');
 
