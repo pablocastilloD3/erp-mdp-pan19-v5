@@ -210,42 +210,43 @@
         },
 
         /**
-   * @method verFolio
-   * @description Abre el modal de auditoría, calcula la ruta del PDF y desglosa productos.
-   * @version 6.6.2 - Fix de Puntero PDF dinámico.
-   */
+         * @method verFolio
+         * @description v6.6.3 - Soporte para columna URL_XML_PDF como objeto JSON.
+         */
         verFolio: function (uuid) {
             const d = window.SISTEMA_ERP.datos['LIBRO_COMPRAS']?.find(c => c.ID_UUID === uuid);
             if (!d) return;
 
-            // LÓGICA DE RECUPERACIÓN DE PDF: 
-            // Si no existe d.URL_PDF, lo derivamos de d.URL_XML cambiando la extensión.
-            const urlRespaldoPDF = d.URL_PDF || (d.URL_XML ? d.URL_XML.replace('.xml', '.pdf') : null);
+            // 1. EXTRACCIÓN DE LINKS (Protocolo Multi-Recurso)
+            // Si COLUMNAS_JSON está bien configurado, 'd.URL_XML_PDF' ya es un objeto.
+            // De lo contrario, lo parseamos manualmente por seguridad.
+            let links = {};
+            try {
+                links = typeof d.URL_XML_PDF === 'string' ? JSON.parse(d.URL_XML_PDF || "{}") : (d.URL_XML_PDF || {});
+            } catch (e) {
+                console.error("Error al procesar URL_XML_PDF", e);
+            }
 
+            const urlPDF = links.pdf || "#";
+            const urlXML = links.xml || "#";
+
+            // 2. EXTRACCIÓN DE PRODUCTOS
             let productos = [];
             try {
-                // Recuperamos el detalle guardado en el DTE
-                productos = JSON.parse(d.DETALLE_JSON || "[]");
-            } catch (e) {
-                console.error("Error al parsear el detalle del documento", e);
-            }
+                productos = typeof d.DETALLE_JSON === 'string' ? JSON.parse(d.DETALLE_JSON || "[]") : (d.DETALLE_JSON || []);
+            } catch (e) { productos = []; }
 
             const html = `
         <div class="modal-header bg-dark text-white p-2 px-3">
-            <h6 class="modal-title fw-bold small text-uppercase">
-                <i class="bi bi-search me-2"></i>Auditoría de Documento: Folio ${d.FOLIO}
-            </h6>
+            <h6 class="modal-title fw-bold small text-uppercase">Auditoría: Folio ${d.FOLIO}</h6>
             <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
         </div>
         <div class="modal-body p-0">
             <div class="bg-light p-3 border-bottom d-flex justify-content-between align-items-center">
-                <div class="small">
-                    <span class="text-muted fw-bold text-uppercase">Proveedor:</span> 
-                    <strong>${d.RAZON_SOCIAL}</strong>
-                </div>
-                <div>
-                    <a href="${urlRespaldoPDF}" target="_blank" 
-                       class="btn btn-sm btn-danger fw-bold shadow-sm ${!urlRespaldoPDF ? 'disabled' : ''}">
+                <div class="small"><span class="text-muted fw-bold">PROVEEDOR:</span> <strong>${d.RAZON_SOCIAL}</strong></div>
+                <div class="d-flex gap-2">
+                    <a href="${urlPDF}" target="_blank" 
+                       class="btn btn-sm btn-danger fw-bold shadow-sm ${urlPDF === '#' ? 'disabled' : ''}">
                         <i class="bi bi-file-earmark-pdf me-1"></i>VER RESPALDO PDF
                     </a>
                 </div>
@@ -258,40 +259,26 @@
                             <th class="ps-3 text-center" style="width: 50px;">#</th>
                             <th>NOMBRE DEL PRODUCTO</th>
                             <th class="text-center" style="width: 100px;">CANTIDAD</th>
-                            <th class="text-end" style="width: 140px;">NETO UNIT.</th>
+                            <th class="text-end" style="width: 140px;">COSTO NETO UNIT.</th>
                             <th class="text-end pe-3" style="width: 140px;">TOTAL NETO</th>
                         </tr>
                     </thead>
                     <tbody>
                         ${productos.length > 0 ? productos.map((it, i) => {
-                const unitario = Number(it.precio) || 0;
-                const cantidad = Number(it.cantidad) || 0;
-                const subtotal = unitario * cantidad;
+                const cant = Number(it.cantidad || it.QtyItem || 0);
+                const precio = Number(it.precio || it.PrcItem || 0);
                 return `
                             <tr class="align-middle">
                                 <td class="text-center text-muted fw-bold">${i + 1}</td>
-                                <td class="fw-bold text-uppercase">${it.nombre || 'N/A'}</td>
-                                <td class="text-center">${cantidad}</td>
-                                <td class="text-end text-muted">${this.estado.fmt.format(unitario)}</td>
-                                <td class="text-end fw-bold pe-3 text-primary">${this.estado.fmt.format(subtotal)}</td>
+                                <td class="fw-bold text-uppercase">${it.nombre || it.NmbItem || 'N/A'}</td>
+                                <td class="text-center">${cant}</td>
+                                <td class="text-end text-muted">${this.estado.fmt.format(precio)}</td>
+                                <td class="text-end fw-bold pe-3 text-primary">${this.estado.fmt.format(cant * precio)}</td>
                             </tr>`;
-            }).join('') : `
-                            <tr><td colspan="5" class="p-4 text-center text-muted">No se encontró detalle de productos.</td></tr>
-                        `}
+            }).join('') : '<tr><td colspan="5" class="p-4 text-center">Sin detalle.</td></tr>'}
                     </tbody>
-                    <tfoot class="bg-light fw-bold border-top">
-                        <tr>
-                            <td colspan="4" class="text-end py-2 text-uppercase small">Consolidado Neto Documento:</td>
-                            <td class="text-end pe-3 py-2 text-primary fs-6">
-                                ${this.estado.fmt.format(this._getNetoEfectivo(d))}
-                            </td>
-                        </tr>
-                    </tfoot>
                 </table>
             </div>
-        </div>
-        <div class="modal-footer bg-light p-2">
-            <button type="button" class="btn btn-sm btn-secondary fw-bold px-4" data-bs-dismiss="modal">CERRAR</button>
         </div>`;
 
             document.getElementById('modal-folio-content').innerHTML = html;
