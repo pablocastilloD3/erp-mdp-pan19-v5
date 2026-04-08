@@ -1,3 +1,4 @@
+
 # Archivos de configuración de clasp
 .clasp.json
 .claspignore
@@ -15,3 +16,4 @@ appsscript.json
 
 # Ignorar cualquier otro archivo que no quieras subir
 PROMPT.md
+V5.code-workspace
