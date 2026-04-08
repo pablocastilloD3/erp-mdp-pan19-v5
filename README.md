@@ -105,6 +105,64 @@ El sistema utiliza objetos JSON para parametrizar la lógica sin alterar el cód
 
 ---
 
+## 🧩 Arquitectura de Módulos (S-V-W)
+
+
+### 🛡️ Módulo de Seguridad y Monitoreo (S_Sesion.html)
+
+El módulo `S_Sesion.html` (Monitor de Seguridad v5.1.0) actúa como el guardián de acceso y vigilancia en la capa del cliente (Frontend). Implementa la arquitectura **Zero-Trust** y gestiona el ciclo de vida del usuario para garantizar el cumplimiento de los estándares de seguridad URS-28.
+
+**Responsabilidades Clave:**
+
+* **Handshake Zero-Trust y Captura de IP:** Al arrancar el sistema, el módulo captura la IP pública del cliente mediante el servicio `api.ipify.org` y solicita al backend la validación estricta de la identidad activa (`w_verificarIdentidadZeroTrust`).
+* **Billetera de Identidad Global (Memory-First):** Tras una autenticación exitosa, construye el objeto `window.SISTEMA_ERP.identidad` en la memoria RAM, almacenando el correo, nombre y el rol validado del usuario. Posteriormente, dispara la señal `erp-auth-success` para que el sistema inicie la descarga de la base de datos.
+* **Inyección de Telemetría Visual (Cero Latencia):** A través del método `actualizarTelemetriaUI`, mapea e inyecta instantáneamente los datos de la identidad (Nombre, Rol y Email) en los componentes del DOM (como etiquetas y menús de navegación) sin requerir recargas de página.
+* **Centinela de Inactividad (Watchdog):** Mantiene una escucha pasiva de los eventos de interacción del usuario (teclado, clics, scroll, pantallas táctiles) para reiniciar un reloj de actividad. Si se alcanza el tiempo límite de inactividad, el sistema lanza un aviso (`modal-sesion-aviso`) con una cuenta regresiva de 120 segundos para extender la sesión o cerrarla.
+* **Cierre de Sesión Forense y Purga de RAM:** Al detonarse un cierre de sesión (ya sea manual, por inactividad o por revocación de privilegios), el método `ejecutarCierre` purga inmediatamente los datos en memoria (`window.SISTEMA_ERP.datos = {}` y `window.SISTEMA_ERP.identidad = null`). Finalmente, registra el evento en la auditoría del servidor (`w_registrarLogForense`) y renderiza una pantalla negra de bloqueo total en el navegador.
+
+***
+
+### 🔐 Módulo de Gestión de Identidades y Accesos (S_Seguridad.html)
+
+El módulo `S_Seguridad.html` (versión 5.1.0) opera como el controlador lógico en el Frontend para la administración de usuarios y la configuración de matrices de permisos (RBAC). Trabaja bajo la arquitectura URS-28 y el modelo Memory-First, consumiendo directamente la información de la bóveda global en RAM.
+
+**Responsabilidades Clave:**
+
+* **Arquitectura Limpia (SRP):** A partir de la versión 5.1.0, el módulo fue refactorizado para eliminar dependencias de telemetría (ahora delegadas a `S_Sesion`), enfocándose de manera exclusiva y aislada en el control de `MAESTRO_USUARIOS` y `MAESTRO_ROLES`.
+* **Gestión Reactiva de Interfaz:** Controla la navegación interna de la vista mediante el método `cambiarPestana`, alternando dinámicamente entre la tabla de usuarios y la tabla de roles, y ajustando los botones de acción correspondientes ("Nueva Identidad" o "Nuevo Perfil").
+* **Administración Segura de Identidades:** Lista a los usuarios mostrando su estado (ACTIVO, PENDIENTE, INACTIVO) y su nivel de acceso mediante la integración con `Factory.crearTabla`. Al editar o crear una identidad (`editarUsuario`), aplica protecciones de negocio, como la directiva `readonly` que impide matemáticamente que el usuario activo desactive su propia cuenta.
+* **Orquestador de Privilegios (Perfiles):** Facilita la creación de roles mediante un formulario que extrae dinámicamente todos los módulos operativos registrados en `window.SISTEMA_ERP.modulos`. Incorpora la función `_toggleSuperAdmin` que, al marcarse, desactiva la selección manual y asigna automáticamente el permiso raíz universal `["*"]`.
+* **Transacciones Blindadas:** Captura los datos de los formularios y los envía al servidor mediante el canal `w_EjecutarTransaccionSegura`, enviando el payload junto con la IP del cliente (`window.SISTEMA_ERP.ipCliente`) para su validación forense. Tras un guardado exitoso, ejecuta una `recargaSilenciosa` de la memoria RAM para reflejar los cambios instantáneamente sin recargar el navegador.
+
+***
+
+### 🔎 Módulo de Auditoría Forense (S_Auditoria.html)
+
+El módulo `S_Auditoria.html` (versión 5.2.1) es el controlador frontend encargado de la visualización y análisis de la trazabilidad inmutable del sistema, garantizando el cumplimiento de los estándares ISO 22000 y normativas del SII. Trabaja consumiendo la tabla `SYS_AUDIT_LOG` cargada en la memoria RAM.
+
+**Responsabilidades Clave:**
+
+* **Motor Pre-Procesador de Sesiones Dinámico:** A través de la función `_preprocesarSesiones`, el módulo ordena estrictamente los registros de forma cronológica y los agrupa en bloques de sesión aislados (`_SESSION_ID`). Utiliza los eventos de entrada (como `AUTH_SUCCESS`) y salida (`LOGOUT`, `TIMEOUT`) para definir los límites de la sesión, generando identificadores de respaldo (`fallback`) para las acciones autónomas del sistema.
+* **Línea de Tiempo (Relato de Sesión):** El método `abrirRelato` aísla los eventos que comparten un mismo ID de sesión y construye una interfaz modal con una línea de tiempo cronológica, permitiendo rastrear la historia real y secuencial de las acciones de un usuario.
+* **Inspección Técnica de Mutaciones (Diff Engine):** Para las operaciones que modifican datos, la función `abrirDiff` analiza los objetos JSON almacenados en `VALOR_ANTERIOR` y `VALOR_NUEVO`. Renderiza una tabla comparativa campo por campo para auditar exactamente qué atributo cambió, mostrando también la firma digital SHA-256 (`HASH_RECORD`) de la transacción.
+* **Verificación de Integridad Criptográfica:** Mediante el método `verificarIntegridad`, el módulo se comunica con el backend para re-calcular y validar la cadena de hashes SHA-256. Si detecta una ruptura en la cadena, captura el `idRuptura`, lanza una alerta de seguridad (renderizada en `audit-integrity-alert`) y resalta visualmente el registro corrupto en la tabla de datos.
+* **Filtros de Exploración Forense:** Implementa el método `aplicarFiltros` para permitir búsquedas granulares por usuario (`filtroUser`), tipo de operación (`filtroAccion`) y ventanas de tiempo (hoy, 7 días, 30 días, este mes, todo). Adicionalmente, incluye un interruptor (`soloRupturas`) para aislar y mostrar únicamente los registros que presenten fallos de integridad criptográfica.
+
+***
+
+### 📦 Módulo de Ingesta Masiva DTE (S_UpdateXML.html)
+
+El módulo `S_UpdateXML.html` (versión 3.0.0) es el controlador de interfaz encargado de la ingesta de Lotes de Documentos Tributarios Electrónicos (DTE). Actúa como un escudo protector y pre-procesador inteligente antes de enviar los datos al núcleo del ERP, garantizando la consistencia del inventario y la contabilidad.
+
+**Responsabilidades Clave:**
+
+* **Sanitización Extrema y Parseo Tributario:** A través de la función `_procesarUnXML`, el módulo lee los archivos cargados y aplica una sanitización estructurada mediante expresiones regulares para eliminar declaraciones intrusas que rompen la lectura del DOM. Extrae datos tributarios vitales como el tipo de documento (`TipoDTE`), montos exentos (`MntExe`), y captura dinámicamente impuestos adicionales o retenciones sumando los valores de los nodos `ImptoReten`.
+* **Cruce de Alérgenos y Detección de Duplicados:** Durante la fase de pre-vuelo (`_ejecutarPreVueloAgrupado`), el sistema cruza los nombres de los ítems contra la `MATRIZ_ALERGENOS` extraída desde `SYS_CONFIG` en la memoria RAM, advirtiendo visualmente en la interfaz. Simultáneamente, escanea el `LIBRO_COMPRAS` activo para verificar coincidencias exactas de RUT y Folio, bloqueando instantáneamente cualquier intento de ingresar un documento duplicado.
+* **Motor Heurístico de Granel (Human-in-the-Loop):** Implementa la función `_sugerirConversion` para auditar inconsistencias en las unidades de medida provistas por los proveedores. Si detecta fracciones en unidades enteras (ej. 2.5 UN) o medidas en menor escala (GR, ML), ejecuta una conversión matemática a escalas industriales (KG, LT) e infiere la magnitud basándose en palabras clave del producto. Estas sugerencias habilitan campos interactivos en la interfaz, exigiendo que el operador valide o corrija la conversión antes de procesar el lote.
+* **Simulador Visual Asíncrono (Optimistic UI):** En el método `confirmarLote`, el módulo cosecha las correcciones manuales y envía todos los documentos válidos en un único bloque atómico al servidor para garantizar la generación de un solo Certificado ISO consolidado. Para evitar que la pantalla se congele durante el proceso backend, despliega un simulador visual (`setInterval`) que calcula un tiempo de espera por documento, animando la barra de progreso y desvaneciendo las filas de la tabla una a una, brindando retroalimentación continua al usuario.
+
+---
+
 ## 📜 Estándares de Cumplimiento
 * **SII Chile:** Procesamiento de XML mediante `SII_MAPPING` definido en `Config.gs`.
 * **ISO 22000:** Protocolo **PCC-01** integrado en el flujo de abastecimiento (bloqueo automático de Lotes sin certificar).
