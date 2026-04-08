@@ -1,10 +1,11 @@
-# ERP MDP PAN19 - v5.0.0 "Eficiencia y Control"
+# ERP MDP PAN19 - v5.2.0 "Eficiencia y Control"
 
 Sistema **MES/ERP** de grado industrial diseñado para la gestión de manufactura, cumplimiento **ISO 22000** (Inocuidad Alimentaria) y normativa **SII Chile** (DTE), operando bajo una arquitectura **Zero Trust** y patrón de datos **Memory-First**.
 
 ## 🏗️ Arquitectura del Sistema
 
 El proyecto se rige por tres pilares fundamentales:
+
 1. **Dumb Server (Servidor Tonto):** El backend (`Core.gs`) actúa solo como un puente de paso y validador de integridad SHA-256. No procesa lógica de interfaz.
 2. **Memory-First:** Toda la base de datos se carga en la RAM del navegador al inicio de la sesión para búsquedas instantáneas y validación cruzada.
 3. **URS (Uniform Record Structure):** Estándar de columnas fijas para asegurar la integridad referencial en todos los libros contables y de producción.
@@ -35,9 +36,7 @@ Estos archivos constituyen la infraestructura crítica e inmutable del sistema:
 
 ## 🧩 Arquitectura de Módulos (S-V-W)
 
-
 [Image of MVC software architecture diagram]
-
 
 Cada módulo funcional se divide obligatoriamente en tres componentes para garantizar escalabilidad:
 
@@ -52,21 +51,26 @@ Cada módulo funcional se divide obligatoriamente en tres componentes para garan
 Para poner en marcha el núcleo industrial, siga estrictamente el orden de inyección de archivos:
 
 ### 1. Preparación del Entorno
+
 1. Cree una nueva **Google Sheet** y asigne un nombre (ej. `ERP_PROD_V4`).
 2. Copie el ID de la hoja desde la URL.
 3. Vaya a `Extensiones > Apps Script`.
 
 ### 2. Inyección de Código (Servidor)
+
 * **Core.gs:** Renombre el archivo `Core.js` del repositorio a `Core.gs` dentro del editor de GAS.
 * **Config.gs:** Renombre `Config.js` a `Config.gs`.
-    * **CRÍTICO:** Actualice la constante `CONFIG.SPREADSHEET_ID` con el ID obtenido.
-    * Actualice `CONFIG.FOLDER_XML_BODEGA` con el ID de una carpeta de Drive para respaldos.
+  * **CRÍTICO:** Actualice la constante `CONFIG.SPREADSHEET_ID` con el ID obtenido.
+  * Actualice `CONFIG.FOLDER_XML_BODEGA` con el ID de una carpeta de Drive para respaldos.
 
 ### 3. Inyección de Componentes (Frontend)
+
 Cree los archivos de tipo **HTML** en el editor de GAS con los nombres exactos:
+
 * `Index.html`, `Enrutamiento.html`, `Lib_Factory.html`, `Utils.html`, `Scripts_Main.html`, `Styles_Main.html`.
 
 ### 4. Publicación (Web App)
+
 1. Click en **Implementar > Nueva implementación**.
 2. Tipo: **Aplicación Web**.
 3. Ejecutar como: **Yo** (Propietario de la base de datos).
@@ -91,7 +95,9 @@ La base de datos reside en Google Sheets. El incumplimiento de este esquema romp
 | `LIBRO_CAJA` | 10 (URS-10)| Control de movimientos y flujos financieros. |
 
 ### ⚙️ Estructuras JSON (Esquemas Lógicos en SYS_CONFIG)
+
 El sistema utiliza objetos JSON para parametrizar la lógica sin alterar el código duro:
+
 1. **MATRIZ_ALERGENOS:** `{"GLUTEN": ["HARINA", "TRIGO"], "LACTEOS": ["QUESO", "LECHE"]}`.
 2. **CATALOGO_TIPOS_ITEM:** Define categorías (`MP_CRITICA`, `INS_QUIM`) para reglas de inspección.
 
@@ -100,13 +106,13 @@ El sistema utiliza objetos JSON para parametrizar la lógica sin alterar el cód
 ## 🛡️ Protocolo Forense (SYS_AUDIT_LOG)
 
 **PROHIBIDO:** Editar manualmente la hoja `SYS_AUDIT_LOG`.
+
 * El motor `Core.gs` valida la integridad mediante la columna `HASH_RECORD`.
 * Cualquier edición manual romperá el encadenamiento criptográfico, activando la alerta de **"Ruptura de Integridad"**.
 
 ---
 
 ## 🧩 Arquitectura de Módulos (S-V-W)
-
 
 ### 🛡️ Módulo de Seguridad y Monitoreo (S_Sesion.html)
 
@@ -164,6 +170,7 @@ El módulo `S_UpdateXML.html` (versión 3.0.0) es el controlador de interfaz enc
 ---
 
 ## 📜 Estándares de Cumplimiento
+
 * **SII Chile:** Procesamiento de XML mediante `SII_MAPPING` definido en `Config.gs`.
 * **ISO 22000:** Protocolo **PCC-01** integrado en el flujo de abastecimiento (bloqueo automático de Lotes sin certificar).
 
@@ -171,10 +178,10 @@ El módulo `S_UpdateXML.html` (versión 3.0.0) es el controlador de interfaz enc
 
 ## 🤖 Directivas para Asistencia por IA (Prompt Engineering)
 
-
-Cualquier interacción con modelos de lenguaje (LLMs) para analizar, modificar o crear código en este repositorio debe adherirse estrictamente a las siguientes directivas ("Flujo de Hierro"). 
+Cualquier interacción con modelos de lenguaje (LLMs) para analizar, modificar o crear código en este repositorio debe adherirse estrictamente a las siguientes directivas ("Flujo de Hierro").
 
 **1. REGLAS DE CÓDIGO INTOCABLE (ZERO-DELETE)**
+
 * **Prohibido eliminar, refactorizar u omitir funciones existentes** que no estén relacionadas con el error reportado (ej. no omitir telemetría, funciones de `logout` o utilidades de UI por ahorrar espacio).
 * Si el código hace referencia a una función que no está en el prompt o contexto actual, **NO LA INVENTES**. La IA debe detenerse y pedir que se le proporcione el archivo original donde reside esa función.
 * **Cruce de Datos Seguro:** Prohibido usar índices fijos o hardcodeados (ej. `tabla[0][2]`). Toda búsqueda debe ser mediante cabecera dinámica usando el motor de exploración activa de `Utils.html`.
@@ -188,6 +195,7 @@ Aquí tienes la estructura optimizada para que la copies y pegues directamente e
 Para garantizar la integridad del sistema, todo nuevo módulo debe dividirse en los siguientes tres archivos, respetando estrictamente sus estructuras base:
 
 ### A. Controlador Frontend (`S_Modulo.html`)
+
 Gestiona los metadatos, el estado local y la lógica de inicio/renderizado.
 
 ```html
@@ -225,6 +233,7 @@ Gestiona los metadatos, el estado local y la lógica de inicio/renderizado.
 ```
 
 ### B. Motor Backend (`W_Modulo.gs`)
+
 Gestiona la lógica de negocio pesada, validaciones de servidor y cumplimiento URS.
 
 ```javascript
@@ -268,6 +277,7 @@ function _logica_ejecutarOperacion(datos) {
 ```
 
 ### C. Vista HTML (`V_Modulo.html`)
+
 Define el esqueleto visual aislado mediante IDs únicos y clases de Bootstrap 5.
 
 ```html
@@ -310,6 +320,7 @@ Define el esqueleto visual aislado mediante IDs únicos y clases de Bootstrap 5.
 ## 3. PROTOCOLO DE CORRECCIÓN (NO ARREGLOS SILENCIOSOS)
 
 La IA debe actuar bajo una política de **"Cero Intervención no Autorizada"**:
+
 1. **Analizar:** Identificar la causa raíz en el código proporcionado.
 2. **Reportar:** Emitir una "Alerta de Anomalía" detallando Ubicación, Problema e Impacto.
 3. **Proponer:** Presentar la solución estructurada.
