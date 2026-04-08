@@ -1,0 +1,108 @@
+<!--   * Pasar de V5.2->V5.2-Auditoria. -->
+<div id="view-auditoria" class="spa-view d-none">
+
+    <div class="row mb-4 pt-3 animate__animated animate__fadeIn">
+        <div class="col-12 d-flex justify-content-between align-items-center">
+            <div>
+                <h2 class="fw-bold mb-0 text-dark">
+                    <i id="v-auditoria-icono" class="bi bi-shield-lock-fill me-2 text-primary"></i>
+                    <span id="v-auditoria-titulo" class="text-uppercase">Auditoría Forense</span>
+                </h2>
+                <p class="text-muted small mb-0" id="v-auditoria-descripcion">
+                    Trazabilidad Inmutable e Historias de Sesión (ISO 22000).
+                </p>
+            </div>
+            <div id="v-auditoria-acciones-header" class="d-flex gap-2">
+                <button class="btn btn-success btn-sm rounded-pill px-4 fw-bold shadow-sm"
+                    onclick="window.Ctrl_Auditoria.verificarIntegridad()">
+                    <i class="bi bi-shield-check me-1"></i> Verificar Cadena
+                </button>
+                <button class="btn btn-light btn-sm border rounded-pill px-3 shadow-sm"
+                    onclick="window.ERP_Utils.recargaSilenciosa()">
+                    <i class="bi bi-arrow-repeat me-1"></i> Sincronizar.
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <hr class="border-2 opacity-25 mb-3">
+
+    <div class="row mb-4 animate__animated animate__fadeIn">
+        <div class="col-12">
+            <div class="card shadow-sm border-0 bg-white">
+                <div class="card-body py-3 px-4">
+                    <div class="row g-3 align-items-center">
+
+                        <div class="col-md-2">
+                            <label class="small text-muted fw-bold mb-1">Identidad</label>
+                            <select id="filter-audit-user" class="form-select form-select-sm bg-light border-0"
+                                onchange="window.Ctrl_Auditoria.setFiltro('filtroUser', this.value)">
+                                <option value="">Todos los Usuarios</option>
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="small text-muted fw-bold mb-1">Operación</label>
+                            <select id="filter-audit-action" class="form-select form-select-sm bg-light border-0"
+                                onchange="window.Ctrl_Auditoria.setFiltro('filtroAccion', this.value)">
+                                <option value="">Todas las Acciones</option>
+                            </select>
+                        </div>
+
+                        <div class="col-md-5">
+                            <label class="small text-muted fw-bold mb-1">Ventana de Tiempo</label>
+                            <div class="btn-group w-100 shadow-sm" role="group">
+                                <input type="radio" class="btn-check" name="btnradio_tiempo" id="t-hoy"
+                                    autocomplete="off" onchange="window.Ctrl_Auditoria.setFiltro('filtroTiempo', '1')">
+                                <label class="btn btn-outline-secondary btn-sm" for="t-hoy">Hoy</label>
+
+                                <input type="radio" class="btn-check" name="btnradio_tiempo" id="t-7d"
+                                    autocomplete="off" onchange="window.Ctrl_Auditoria.setFiltro('filtroTiempo', '7')">
+                                <label class="btn btn-outline-secondary btn-sm" for="t-7d">7 Días</label>
+
+                                <input type="radio" class="btn-check" name="btnradio_tiempo" id="t-30d"
+                                    autocomplete="off" checked
+                                    onchange="window.Ctrl_Auditoria.setFiltro('filtroTiempo', '30')">
+                                <label class="btn btn-outline-secondary btn-sm fw-bold" for="t-30d">30 Días</label>
+
+                                <input type="radio" class="btn-check" name="btnradio_tiempo" id="t-mes"
+                                    autocomplete="off"
+                                    onchange="window.Ctrl_Auditoria.setFiltro('filtroTiempo', 'mes')">
+                                <label class="btn btn-outline-secondary btn-sm" for="t-mes">Este Mes</label>
+
+                                <input type="radio" class="btn-check" name="btnradio_tiempo" id="t-todo"
+                                    autocomplete="off"
+                                    onchange="window.Ctrl_Auditoria.setFiltro('filtroTiempo', 'todo')">
+                                <label class="btn btn-outline-secondary btn-sm" for="t-todo">Todo</label>
+                            </div>
+                        </div>
+
+                        <div class="col-md-3 d-flex align-items-end">
+                            <div
+                                class="form-check form-switch w-100 bg-danger bg-opacity-10 border border-danger border-opacity-25 rounded px-3 py-2 d-flex align-items-center">
+                                <input class="form-check-input ms-0 me-2 mt-0" type="checkbox" id="filter-only-rupturas"
+                                    onchange="window.Ctrl_Auditoria.setFiltro('soloRupturas', this.checked)">
+                                <label class="form-check-label small fw-bold text-danger pt-1"
+                                    for="filter-only-rupturas">AISLAR CORRUPTOS</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="audit-integrity-alert"></div>
+
+    <div class="row animate__animated animate__fadeInUp">
+        <div class="col-12">
+            <div class="card shadow-sm border-0">
+                <div class="card-body p-0">
+                    <div id="v-auditoria-contenedor-principal" class="table-responsive" style="min-height: 500px;">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="v-auditoria-modales"></div>
+</div>
