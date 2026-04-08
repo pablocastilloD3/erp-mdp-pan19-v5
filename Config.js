@@ -50,14 +50,7 @@ var CONFIG = {
     LOTES: 'ID_UUID',
     CAJA: 'ID_MOVIMIENTO',
     CXP: 'ID_CXP'
-  },
-
-  COLUMNAS_JSON: [
-    'DETALLE_JSON',
-    'PERMISOS_JSON',
-    'FICHA_TECNICA_JSON',
-    'URL_XML_PDF' // 🚀 FIX: Declaración de nueva columna JSON
-  ]
+  }
 };
 
 var CONFIG_DETALLE_COMPRAS = {
