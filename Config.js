@@ -71,5 +71,8 @@ var CONFIG_DETALLE_COMPRAS = {
   },
   SCHEMA_JSON: {
     sku: null, nombre: null, cantidad: 0, precio: 0, unidad: 'UN', lote: 'S/L', alergenos: 'OK', iso_status: 'PENDIENTE'
-  }
+  },
+
+
+
 };
