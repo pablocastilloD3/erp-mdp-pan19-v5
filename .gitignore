@@ -1,6 +1,8 @@
 # Archivos de configuración de clasp
 .clasp.json
+.claspignore
 appsscript.json
+
 
 # Dependencias de Node.js
 /node_modules
@@ -10,3 +12,6 @@ appsscript.json
 
 # Archivos de Visual Studio Code
 .vscode/
+
+# Ignorar cualquier otro archivo que no quieras subir
+PROMPT.md

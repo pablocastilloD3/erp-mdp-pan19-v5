@@ -10,6 +10,7 @@
 			"**/.svn": true,
 			"**/.hg": true,
 			"V5.code-workspace": true,
+			"PROMPT.md": true,
 			"**/.*": true
 		},
 		"showHideExcludedConfig.ignoreExcludes": [

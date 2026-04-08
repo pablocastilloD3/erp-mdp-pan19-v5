@@ -48,15 +48,15 @@ Deben usar prefijos estrictos:
 
 Cuando se reporte un fallo, responde ÚNICAMENTE en formato Markdown, usando tablas si hay pasos múltiples, y aplicando esta plantilla exacta:
 
-### 🚨 REPORTE DE ANOMALÍA
+### 🚨 REPORTE DE ANOMALIA
 
-**CONTEXTO DEL PROYECTO**
+### CONTEXTO DEL PROYECTO
 
 * **Módulo:** [Nombre del sistema/módulo]
 * **Fase actual:** [Implementación / Pruebas operativas]
 * **Ambiente:** [DEV / QA / PROD]
 
-**DETALLES DE LA ANOMALÍA**
+### DETALLES DE LA ANOMALIA
 
 * **Descripción:** [Síntoma observado en 2-3 oraciones]
 * **Evidencia:** [Logs o datos proporcionados]
@@ -64,12 +64,12 @@ Cuando se reporte un fallo, responde ÚNICAMENTE en formato Markdown, usando tab
 * **Impacto Operativo:** [Impacto en usuarios, procesos o manufacturing]
 * **Compliance:** [Afectación a SII, ISO 22000, URS-28]
 
-**ANÁLISIS DE CAUSA RAÍZ (5 Porqués si aplica)**
+### ANÁLISIS DE CAUSA RAIZ (5 Porqués si aplica)
 
 1. [Análisis técnico detallado]
 
-**PROPUESTA DE SOLUCIÓN**
+### PROPUESTA DE SOLUCION
 
 * [Paso a paso de lo que se debe modificar, sin generar el código completo aún]
 
-✅ *Espero aprobación para generar el código de corrección.*
+✅ **Espero aprobación para generar el código de corrección.**
