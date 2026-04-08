@@ -85,14 +85,14 @@ La base de datos reside en Google Sheets. El incumplimiento de este esquema romp
 | Hoja | Columnas | Propósito Central |
 | :--- | :--- | :--- |
 | `MAESTRO_ITEMS` | 18 (URS-18) | Catálogo de SKUs, alérgenos e indicadores de inocuidad (ISO 22000). |
-| `MAESTRO_PROVEEDORES`| 22 (URS-22) | Enrolamiento de entidades, RUT, giro y niveles de riesgo ISO. |
+| `MAESTRO_PROVEEDORES` | 22 (URS-22) | Enrolamiento de entidades, RUT, giro y niveles de riesgo ISO. |
 | `LIBRO_COMPRAS` | 29 (URS-29) | Registro transaccional inmutable de DTEs y detalles JSON. |
-| `ABASTECIMIENTO_LOTES`| 16 (URS-16) | Trazabilidad forense de saldos, ubicaciones y estados de calidad (HACCP/ISO). |
+| `ABASTECIMIENTO_LOTES` | 16 (URS-16) | Trazabilidad forense de saldos, ubicaciones y estados de calidad (HACCP/ISO). |
 | `SYS_AUDIT_LOG` | 12 (URS-12) | Registro forense del sistema con encadenamiento criptográfico SHA-256. |
 | `SYS_CONFIG` | 6 (URS-6) | Parámetros globales, esquemas JSON y reglas de negocio. |
 | `MAESTRO_USUARIOS` | 7 (URS-7) | Control de identidades, UUID de acceso y estatus de cuentas. |
 | `MAESTRO_ROLES` | 5 (URS-5) | Matriz de permisos en formato JSON para acceso granular. |
-| `LIBRO_CAJA` | 10 (URS-10)| Control de movimientos y flujos financieros. |
+| `LIBRO_CAJA` | 10 (URS-10) | Control de movimientos y flujos financieros. |
 
 ### ⚙️ Estructuras JSON (Esquemas Lógicos en SYS_CONFIG)
 
@@ -112,21 +112,19 @@ El sistema utiliza objetos JSON para parametrizar la lógica sin alterar el cód
 
 ---
 
-## 🧩 Arquitectura de Módulos (S-V-W)
+## 🧩 Módulos Operativos (S_Sesion, S_Seguridad, S_Auditoria, S_UpdateXML)
 
 ### 🛡️ Módulo de Seguridad y Monitoreo (S_Sesion.html)
 
 El módulo `S_Sesion.html` (Monitor de Seguridad v5.1.0) actúa como el guardián de acceso y vigilancia en la capa del cliente (Frontend). Implementa la arquitectura **Zero-Trust** y gestiona el ciclo de vida del usuario para garantizar el cumplimiento de los estándares de seguridad URS-28.
 
-**Responsabilidades Clave:**
+### Responsabilidades Clave
 
 * **Handshake Zero-Trust y Captura de IP:** Al arrancar el sistema, el módulo captura la IP pública del cliente mediante el servicio `api.ipify.org` y solicita al backend la validación estricta de la identidad activa (`w_verificarIdentidadZeroTrust`).
 * **Billetera de Identidad Global (Memory-First):** Tras una autenticación exitosa, construye el objeto `window.SISTEMA_ERP.identidad` en la memoria RAM, almacenando el correo, nombre y el rol validado del usuario. Posteriormente, dispara la señal `erp-auth-success` para que el sistema inicie la descarga de la base de datos.
 * **Inyección de Telemetría Visual (Cero Latencia):** A través del método `actualizarTelemetriaUI`, mapea e inyecta instantáneamente los datos de la identidad (Nombre, Rol y Email) en los componentes del DOM (como etiquetas y menús de navegación) sin requerir recargas de página.
 * **Centinela de Inactividad (Watchdog):** Mantiene una escucha pasiva de los eventos de interacción del usuario (teclado, clics, scroll, pantallas táctiles) para reiniciar un reloj de actividad. Si se alcanza el tiempo límite de inactividad, el sistema lanza un aviso (`modal-sesion-aviso`) con una cuenta regresiva de 120 segundos para extender la sesión o cerrarla.
 * **Cierre de Sesión Forense y Purga de RAM:** Al detonarse un cierre de sesión (ya sea manual, por inactividad o por revocación de privilegios), el método `ejecutarCierre` purga inmediatamente los datos en memoria (`window.SISTEMA_ERP.datos = {}` y `window.SISTEMA_ERP.identidad = null`). Finalmente, registra el evento en la auditoría del servidor (`w_registrarLogForense`) y renderiza una pantalla negra de bloqueo total en el navegador.
-
-***
 
 ### 🔐 Módulo de Gestión de Identidades y Accesos (S_Seguridad.html)
 
@@ -140,8 +138,6 @@ El módulo `S_Seguridad.html` (versión 5.1.0) opera como el controlador lógico
 * **Orquestador de Privilegios (Perfiles):** Facilita la creación de roles mediante un formulario que extrae dinámicamente todos los módulos operativos registrados en `window.SISTEMA_ERP.modulos`. Incorpora la función `_toggleSuperAdmin` que, al marcarse, desactiva la selección manual y asigna automáticamente el permiso raíz universal `["*"]`.
 * **Transacciones Blindadas:** Captura los datos de los formularios y los envía al servidor mediante el canal `w_EjecutarTransaccionSegura`, enviando el payload junto con la IP del cliente (`window.SISTEMA_ERP.ipCliente`) para su validación forense. Tras un guardado exitoso, ejecuta una `recargaSilenciosa` de la memoria RAM para reflejar los cambios instantáneamente sin recargar el navegador.
 
-***
-
 ### 🔎 Módulo de Auditoría Forense (S_Auditoria.html)
 
 El módulo `S_Auditoria.html` (versión 5.2.1) es el controlador frontend encargado de la visualización y análisis de la trazabilidad inmutable del sistema, garantizando el cumplimiento de los estándares ISO 22000 y normativas del SII. Trabaja consumiendo la tabla `SYS_AUDIT_LOG` cargada en la memoria RAM.
@@ -153,8 +149,6 @@ El módulo `S_Auditoria.html` (versión 5.2.1) es el controlador frontend encarg
 * **Inspección Técnica de Mutaciones (Diff Engine):** Para las operaciones que modifican datos, la función `abrirDiff` analiza los objetos JSON almacenados en `VALOR_ANTERIOR` y `VALOR_NUEVO`. Renderiza una tabla comparativa campo por campo para auditar exactamente qué atributo cambió, mostrando también la firma digital SHA-256 (`HASH_RECORD`) de la transacción.
 * **Verificación de Integridad Criptográfica:** Mediante el método `verificarIntegridad`, el módulo se comunica con el backend para re-calcular y validar la cadena de hashes SHA-256. Si detecta una ruptura en la cadena, captura el `idRuptura`, lanza una alerta de seguridad (renderizada en `audit-integrity-alert`) y resalta visualmente el registro corrupto en la tabla de datos.
 * **Filtros de Exploración Forense:** Implementa el método `aplicarFiltros` para permitir búsquedas granulares por usuario (`filtroUser`), tipo de operación (`filtroAccion`) y ventanas de tiempo (hoy, 7 días, 30 días, este mes, todo). Adicionalmente, incluye un interruptor (`soloRupturas`) para aislar y mostrar únicamente los registros que presenten fallos de integridad criptográfica.
-
-***
 
 ### 📦 Módulo de Ingesta Masiva DTE (S_UpdateXML.html)
 
@@ -180,7 +174,7 @@ El módulo `S_UpdateXML.html` (versión 3.0.0) es el controlador de interfaz enc
 
 Cualquier interacción con modelos de lenguaje (LLMs) para analizar, modificar o crear código en este repositorio debe adherirse estrictamente a las siguientes directivas ("Flujo de Hierro").
 
-**1. REGLAS DE CÓDIGO INTOCABLE (ZERO-DELETE)**
+### 1. REGLAS DE CÓDIGO INTOCABLE (ZERO-DELETE)**
 
 * **Prohibido eliminar, refactorizar u omitir funciones existentes** que no estén relacionadas con el error reportado (ej. no omitir telemetría, funciones de `logout` o utilidades de UI por ahorrar espacio).
 * Si el código hace referencia a una función que no está en el prompt o contexto actual, **NO LA INVENTES**. La IA debe detenerse y pedir que se le proporcione el archivo original donde reside esa función.
