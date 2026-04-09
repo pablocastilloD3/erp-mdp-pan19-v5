@@ -34,6 +34,29 @@ Estos archivos constituyen la infraestructura crítica e inmutable del sistema:
 
 ---
 
+## 🛡️ Arquitectura Zero-Trust: Refactorización de Configuración (v5.1.0+)
+
+A partir de la versión 5.2.0, el ERP implementa un estricto patrón **Zero-Trust (Confianza Cero)** para el manejo de variables globales y credenciales, garantizando el cumplimiento de los estándares de seguridad de la información (ISO 22000) y la norma URS-28.
+
+### El Problema (Legacy)
+
+Anteriormente, el archivo `Config.gs` operaba como un monolito que mezclaba reglas de negocio (públicas) con identificadores de infraestructura (`SPREADSHEET_ID`, IDs de Google Drive). Esta estructura impedía inyectar la configuración al cliente (Frontend) sin exponer secretos críticos al navegador del usuario, obligando a los módulos a utilizar nombres de base de datos *hardcodeados* (ej. `LIBRO_COMPRAS`).
+
+### La Solución (Zero-Trust)
+
+Se aplicó el principio de Segregación de Interfaces, dividiendo el entorno en dos dominios estrictos:
+
+1. **`SECRETS` (Bóveda Backend):**
+   Un objeto inmutable que reside **exclusivamente en el motor V8** de Google Apps Script. Contiene los IDs de las bases de datos y carpetas. Jamás se expone al cliente.
+
+   ```javascript
+   var SECRETS = {
+     SPREADSHEET_ID: "ID_REAL_OCULTO",
+     FOLDER_XML_BODEGA: "ID_CARPETA_OCULTO"
+   };
+
+---
+
 ## 🧩 Arquitectura de Módulos (S-V-W)
 
 [Image of MVC software architecture diagram]
