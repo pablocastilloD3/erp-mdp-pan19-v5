@@ -1,0 +1,235 @@
+<script>
+    /**
+     * @file S_Proveedores.html
+     * @version 1.0.0
+     * @description Maestro de Proveedores con Arquitectura 360°. Cruce en RAM (Singleton).
+     */
+
+    window.Ctrl_Proveedores = {
+        meta: { id: 'proveedores', version: '1.0.0', titulo: 'Maestro de Proveedores' },
+        estado: { filtroBusqueda: '', filtroISO: '', filtroSys: 'VIGENTE', listenerActivo: false },
+
+        init: function () {
+            if (!this.estado.listenerActivo) {
+                window.addEventListener('erp-datos-listos', () => {
+                    if (window.SISTEMA_ERP && window.SISTEMA_ERP.moduloActual === this.meta.id) {
+                        this.render();
+                    }
+                });
+                this.estado.listenerActivo = true;
+            }
+        },
+
+        setFiltro: function (key, val) {
+            if (key === 'busqueda') this.estado.filtroBusqueda = String(val).toLowerCase();
+            if (key === 'iso') this.estado.filtroISO = val;
+            if (key === 'sys') this.estado.filtroSys = val;
+            this.render();
+        },
+
+        render: function () {
+            // Protección Zero-Trust / Core Dependencies
+            if (!window.SISTEMA_ERP || !window.SISTEMA_ERP.datos || !window.CONFIG || !window.CONFIG.DB) return;
+
+            const raw = window.SISTEMA_ERP.datos[window.CONFIG.DB.PROVEEDORES];
+            if (!raw || !Array.isArray(raw)) return;
+
+            // Filtros reactivos
+            const dataFiltrada = raw.filter(p => {
+                const bRUT = String(p.RUT_ENTIDAD || '').toLowerCase();
+                const bNombre = String(p.RAZON_SOCIAL || '').toLowerCase();
+                const fISO = String(p.ISO_ESTADO || '');
+                const fSys = String(p.SYS_ESTADO || 'VIGENTE');
+
+                const matchBusqueda = bRUT.includes(this.estado.filtroBusqueda) || bNombre.includes(this.estado.filtroBusqueda);
+                const matchISO = this.estado.filtroISO === '' || fISO === this.estado.filtroISO;
+                const matchSys = fSys === this.estado.filtroSys;
+
+                return matchBusqueda && matchISO && matchSys;
+            });
+
+            let container = document.getElementById('v-proveedores-contenedor-principal');
+            if (!container) return; // Se omite self-healing por brevedad, asumiendo vista estática.
+
+            if (window.Factory && typeof window.Factory.crearTabla === 'function') {
+                window.Factory.crearTabla('v-proveedores-contenedor-principal', {
+                    data: dataFiltrada,
+                    idKey: 'RUT_ENTIDAD',
+                    config: { rowsPerPage: 15, pagination: true },
+                    columns: [
+                        {
+                            label: 'Identidad Tributaria', key: 'RUT_ENTIDAD',
+                            render: (v, r) => `
+                                <div class="d-flex flex-column">
+                                    <span class="fw-bold text-dark">${String(r.RAZON_SOCIAL || 'SIN NOMBRE')}</span>
+                                    <span class="font-monospace small text-muted">${v}</span>
+                                </div>`
+                        },
+                        {
+                            label: 'Giro Comercial', key: 'GIRO',
+                            render: (v) => `<span class="small text-truncate d-inline-block" style="max-width: 200px;">${String(v || '-')}</span>`
+                        },
+                        {
+                            label: 'Inocuidad (ISO 22000)', key: 'ISO_ESTADO',
+                            render: (v) => {
+                                const st = String(v || 'EVALUACION');
+                                let bg = st === 'ACTIVO' ? 'bg-success' : (st === 'BLOQUEADO' ? 'bg-danger pulse' : 'bg-warning text-dark');
+                                return `<span class="badge ${bg} shadow-sm border font-monospace extra-small">${st}</span>`;
+                            }
+                        },
+                        {
+                            label: 'Operaciones', key: 'RUT_ENTIDAD',
+                            render: (v) => `
+                                <button class="btn btn-sm btn-dark fw-bold rounded-pill shadow-sm px-3 py-1 extra-small" 
+                                    onclick="window.Ctrl_Proveedores.abrirFicha360('${v}')">
+                                    <i class="bi bi-radar me-1"></i> FICHA 360°
+                                </button>`
+                        }
+                    ]
+                });
+            }
+        },
+
+        // =========================================================================
+        // 🚀 MOTOR RELACIONAL 360°: Cruce de 5 Tablas en Memoria (Zero-Latency)
+        // =========================================================================
+        abrirFicha360: function (rut) {
+            const db = window.SISTEMA_ERP.datos;
+            const cnf = window.CONFIG.DB;
+
+            // 1. Entidad Principal (PROVEEDORES)
+            const prov = (db[cnf.PROVEEDORES] || []).find(p => p.RUT_ENTIDAD === rut);
+            if (!prov) return;
+
+            // 2. Tributario (COMPRAS)
+            const rutLimpio = rut.replace(/\./g, '').trim().toUpperCase();
+            const compras = (db[cnf.COMPRAS] || []).filter(c => String(c.RUT_EMISOR).replace(/\./g, '').trim().toUpperCase() === rutLimpio);
+            const totalComprado = compras.reduce((acc, cur) => acc + Number(cur.MONTO_TOTAL || 0), 0);
+
+            // 3. Finanzas (CXP)
+            // Extraemos los UUIDs de las compras de este proveedor
+            const uuidsCompras = compras.map(c => c.ID_UUID);
+            const cxpList = (db[cnf.CXP] || []).filter(cxp => uuidsCompras.includes(cxp.ID_COMPRA));
+            const deudaFlotante = cxpList.reduce((acc, cur) => acc + (String(cur.ESTADO) !== 'PAGADO' ? Number(cur.SALDO_PENDIENTE || 0) : 0), 0);
+
+            // 4. Inocuidad y Abastecimiento (LOTES)
+            const lotes = (db[cnf.LOTES] || []).filter(l => String(l.RUT_PROVEEDOR) === rut);
+
+            // --- CONSTRUCCIÓN DE LA VISTA 360° (Modal) ---
+            const idModal = window.Factory.abrirModal({ titulo: `Panel 360° | ${prov.RAZON_SOCIAL}`, tamaño: 'modal-xl' });
+
+            document.getElementById(idModal).innerHTML = `
+            <div class="row g-3 mb-3">
+                <div class="col-md-3">
+                    <div class="p-3 bg-light rounded border border-secondary shadow-sm h-100">
+                        <div class="small text-muted fw-bold">RUT COMERCIAL</div>
+                        <div class="fs-5 fw-bold font-monospace">${prov.RUT_ENTIDAD}</div>
+                        <div class="badge bg-primary mt-1">${String(prov.ISO_ESTADO || 'EVALUACION')}</div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="p-3 bg-light rounded border border-info shadow-sm h-100">
+                        <div class="small text-info-emphasis fw-bold">FACTURAS EMITIDAS (DTE)</div>
+                        <div class="fs-4 fw-bold text-dark">${compras.length}</div>
+                        <div class="small text-muted">Histórico Total</div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="p-3 bg-light rounded border ${deudaFlotante > 0 ? 'border-danger pulse-danger-glow' : 'border-success'} shadow-sm h-100">
+                        <div class="small text-muted fw-bold">PASIVO ACTUAL (CxP)</div>
+                        <div class="fs-4 fw-bold ${deudaFlotante > 0 ? 'text-danger' : 'text-success'}">$${deudaFlotante.toLocaleString('es-CL')}</div>
+                        <div class="small text-muted">Saldo Pendiente de Pago</div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="p-3 bg-dark text-white rounded border border-dark shadow-sm h-100">
+                        <div class="small text-light fw-bold opacity-75">ALÉRGENOS PLANTA</div>
+                        <div class="fs-6 fw-bold mt-1 text-warning">${String(prov.ISO_ALERGENOS || 'NO DECLARADO')}</div>
+                        <div class="small text-light opacity-50 mt-1">Lotes entregados: ${lotes.length}</div>
+                    </div>
+                </div>
+            </div>
+
+            <ul class="nav nav-tabs fw-bold small mb-3" id="tab360-${rut}">
+                <li class="nav-item"><a class="nav-link active text-dark" data-bs-toggle="tab" href="#p-perfil"><i class="bi bi-building me-1"></i>Perfil Fiscal</a></li>
+                <li class="nav-item"><a class="nav-link text-dark" data-bs-toggle="tab" href="#p-compras"><i class="bi bi-receipt me-1"></i>Facturas (DTE)</a></li>
+                <li class="nav-item"><a class="nav-link text-dark" data-bs-toggle="tab" href="#p-finanzas"><i class="bi bi-cash-coin me-1"></i>Finanzas (CxP)</a></li>
+            </ul>
+
+            <div class="tab-content">
+                
+                <div class="tab-pane fade show active p-3 bg-white border rounded" id="p-perfil">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6 class="fw-bold text-primary border-bottom pb-2">Información de Contacto</h6>
+                            <table class="table table-sm table-borderless small">
+                                <tr><td class="text-muted fw-bold w-25">Giro:</td><td>${prov.GIRO || '-'}</td></tr>
+                                <tr><td class="text-muted fw-bold">Dirección:</td><td>${prov.DIRECCION || '-'}</td></tr>
+                                <tr><td class="text-muted fw-bold">Email:</td><td>${prov.CONTACTO_EMAIL || '-'}</td></tr>
+                                <tr><td class="text-muted fw-bold">Teléfono:</td><td>${prov.CONTACTO_FONO || '-'}</td></tr>
+                            </table>
+                        </div>
+                        <div class="col-md-6">
+                            <h6 class="fw-bold text-success border-bottom pb-2">Datos Bancarios</h6>
+                            <div class="bg-light p-2 rounded font-monospace small border shadow-inner">
+                                ${prov.DATOS_BANCARIOS || '{"aviso": "No registrado"}'}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="tab-pane fade" id="p-compras">
+                    <div class="table-responsive" style="max-height: 300px; overflow-y: auto;">
+                        <table class="table table-sm table-hover border small">
+                            <thead class="table-dark sticky-top">
+                                <tr><th>Fecha</th><th>Folio DTE</th><th>Tipo</th><th>Monto Total</th></tr>
+                            </thead>
+                            <tbody>
+                                ${compras.length === 0 ? '<tr><td colspan="4" class="text-center text-muted py-3">No hay registros de compras.</td></tr>' :
+                    compras.sort((a, b) => new Date(b.FECHA_EMISION) - new Date(a.FECHA_EMISION)).map(c => `
+                                    <tr>
+                                        <td class="font-monospace">${c.FECHA_EMISION}</td>
+                                        <td class="fw-bold text-primary">#${c.FOLIO}</td>
+                                        <td>${c.TIPO_DTE === '33' ? 'Factura' : (c.TIPO_DTE === '34' ? 'Factura Exenta' : 'DTE ' + c.TIPO_DTE)}</td>
+                                        <td class="fw-bold text-success">$${Number(c.MONTO_TOTAL).toLocaleString('es-CL')}</td>
+                                    </tr>
+                                  `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="tab-pane fade" id="p-finanzas">
+                    <div class="table-responsive" style="max-height: 300px; overflow-y: auto;">
+                        <table class="table table-sm table-hover border small">
+                            <thead class="table-secondary sticky-top">
+                                <tr><th>ID CXP</th><th>Factura Origen</th><th>Vencimiento</th><th>Saldo Pendiente</th><th>Estado</th></tr>
+                            </thead>
+                            <tbody>
+                                ${cxpList.length === 0 ? '<tr><td colspan="5" class="text-center text-muted py-3">Sin registro de Cuentas por Pagar.</td></tr>' :
+                    cxpList.map(cxp => {
+                        const fac = compras.find(c => c.ID_UUID === cxp.ID_COMPRA) || {};
+                        const estado = String(cxp.ESTADO);
+                        const badge = estado === 'PAGADO' ? 'bg-success' : 'bg-warning text-dark';
+                        return `
+                                      <tr>
+                                          <td class="font-monospace">${cxp.ID_CXP}</td>
+                                          <td class="fw-bold">Folio #${fac.FOLIO || 'N/A'}</td>
+                                          <td>${cxp.FECHA_VENCIMIENTO || '-'}</td>
+                                          <td class="fw-bold text-danger">$${Number(cxp.SALDO_PENDIENTE || 0).toLocaleString('es-CL')}</td>
+                                          <td><span class="badge ${badge} extra-small">${estado}</span></td>
+                                      </tr>`;
+                    }).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+            </div>`;
+        },
+
+        abrirModalCRUD: function () {
+            window.ERP_Utils.mostrarToast("Módulo de Creación de Proveedor en Desarrollo.", "info");
+        }
+    };
+</script>

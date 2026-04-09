@@ -1,0 +1,73 @@
+<div id="view-proveedores" class="spa-view d-none">
+
+    <div class="row mb-4 pt-3 animate__animated animate__fadeIn">
+        <div class="col-12 d-flex justify-content-between align-items-center">
+            <div>
+                <h2 class="fw-bold mb-0 text-dark">
+                    <i class="bi bi-buildings-fill me-2 text-primary"></i>
+                    <span class="text-uppercase">Maestro de Proveedores</span>
+                </h2>
+                <p class="text-muted small mb-0">Gestión 360°, Cumplimiento ISO 22000 y Riesgo Financiero.</p>
+            </div>
+            <div class="d-flex gap-2">
+                <button class="btn btn-primary btn-sm rounded-pill px-4 fw-bold shadow-sm"
+                    onclick="window.Ctrl_Proveedores.abrirModalCRUD()">
+                    <i class="bi bi-plus-circle me-1"></i> Nuevo Proveedor
+                </button>
+                <button class="btn btn-light btn-sm border rounded-pill px-3 shadow-sm"
+                    onclick="window.ERP_Utils.recargaSilenciosa()">
+                    <i class="bi bi-arrow-repeat me-1"></i> Sincronizar
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <hr class="border-2 opacity-25 mb-3">
+
+    <div class="row mb-4 animate__animated animate__fadeIn">
+        <div class="col-12">
+            <div class="card shadow-sm border-0 bg-white">
+                <div class="card-body py-3 px-4 d-flex gap-3 align-items-center flex-wrap">
+                    <div style="flex: 1; min-width: 250px;">
+                        <label class="small text-muted fw-bold mb-1">Buscar Identidad</label>
+                        <div class="input-group input-group-sm">
+                            <span class="input-group-text bg-light border-end-0"><i class="bi bi-search"></i></span>
+                            <input type="text" class="form-control border-start-0 bg-light" id="filter-prov-search"
+                                placeholder="RUT o Razón Social..."
+                                onkeyup="window.Ctrl_Proveedores.setFiltro('busqueda', this.value)">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="small text-muted fw-bold mb-1">Inocuidad (ISO)</label>
+                        <select id="filter-prov-iso" class="form-select form-select-sm bg-light border-0"
+                            onchange="window.Ctrl_Proveedores.setFiltro('iso', this.value)">
+                            <option value="">Todos los Estados</option>
+                            <option value="ACTIVO">Activos (Aprobados)</option>
+                            <option value="EVALUACION">En Evaluación</option>
+                            <option value="BLOQUEADO">Bloqueados (Riesgo)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="small text-muted fw-bold mb-1">Sistema</label>
+                        <select id="filter-prov-sys" class="form-select form-select-sm bg-light border-0"
+                            onchange="window.Ctrl_Proveedores.setFiltro('sys', this.value)">
+                            <option value="VIGENTE">Vigentes</option>
+                            <option value="INACTIVO">Inactivos (Papelera)</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row animate__animated animate__fadeInUp">
+        <div class="col-12">
+            <div class="card shadow-sm border-0">
+                <div class="card-body p-0">
+                    <div id="v-proveedores-contenedor-principal" class="table-responsive" style="min-height: 500px;">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
