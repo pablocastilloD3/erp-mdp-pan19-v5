@@ -1,22 +1,30 @@
 /**
  * @file Config.gs
- * @description Fuente de la Verdad Inmutable. Mapeo URS y Lógica de Relaciones.
- * @version 5.0.2
+ * @description Fuente de la Verdad. Segregación Zero-Trust (Público vs Secreto).
+ * @version 5.1.0
  */
 
+// ============================================================================
+// 1. SECRETS (Infraestructura - Aislao en el Servidor V8)
+// ============================================================================
+var SECRETS = {
+  SPREADSHEET_ID: "1-zTmClZh8s-xraYBdQlY5HJIQvmq_7dVCS0SmEydNMc",
+  FOLDER_XML_BODEGA: "1iCMETUMuqwokGiTKeXPO_Vl_ZTnKhd4Z"
+};
+
+// ============================================================================
+// 2. CONFIG (Reglas de Negocio y Mapeo - Seguro para Inyección al Frontend)
+// ============================================================================
 var CONFIG = {
   APP_NAME: "ERP MDP PAN19",
-  VERSION: "5.0.1",
-  ENV: "DEV",
+  VERSION: "5.2.0",
+  ENV: "PRO",
   COMPLIANCE: {
     NORMA_1: "ISO 22000 COMPLIANT",
     NORMA_2: "DTE SII CHILE"
   },
   ARCHITECTURE: "Zero Trust Architecture",
   CHILE_OFFSET: "America/Santiago",
-
-  SPREADSHEET_ID: "1vwJaRvW8eTFqfhr02yOvPBOMvmDtTI6mJ_irXQXtZk4",
-  FOLDER_XML_BODEGA: "1iCMETUMuqwokGiTKeXPO_Vl_ZTnKhd4Z",
 
   DB: {
     COMPRAS: 'LIBRO_COMPRAS',
@@ -38,12 +46,11 @@ var CONFIG = {
     "SOYA": ["SOYA", "SOJA", "TOFU"]
   },
 
-  // Ubicación: Config.js -> Objeto CONFIG
   LLAVES_PRIMARIAS: {
     COMPRAS: 'ID_UUID',
-    ITEMS: 'SKU_INTERNO',         // CORREGIDO: Antes COD_ITEM
+    ITEMS: 'SKU_INTERNO',
     CONFIG: 'PARAM_KEY',
-    PROVEEDORES: 'RUT_ENTIDAD',   // CORREGIDO: Antes RUT_PROVEEDOR
+    PROVEEDORES: 'RUT_ENTIDAD',
     AUDIT_LOG: 'ID_LOG',
     USUARIOS: 'ID_UUID',
     ROLES: 'ID_ROL',
@@ -53,6 +60,7 @@ var CONFIG = {
   }
 };
 
+// Estructuras públicas de procesamiento
 var CONFIG_DETALLE_COMPRAS = {
   SII_MAPPING: {
     SKU: 'VlrCodigo',
@@ -71,8 +79,5 @@ var CONFIG_DETALLE_COMPRAS = {
   },
   SCHEMA_JSON: {
     sku: null, nombre: null, cantidad: 0, precio: 0, unidad: 'UN', lote: 'S/L', alergenos: 'OK', iso_status: 'PENDIENTE'
-  },
-
-
-
+  }
 };

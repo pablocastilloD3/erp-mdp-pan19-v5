@@ -20,8 +20,8 @@ function w_verificarIdentidadZeroTrust(ip) {
     if (!emailStr) throw new Error("Identidad de Google no detectada.");
     console.log("🛡️ [W_Seguridad] ==> 2. Email obtenido: " + emailStr);
 
-    var ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
-    console.log("🛡️ [W_Seguridad] ==> 3. Spreadsheet abierto con ID: " + CONFIG.SPREADSHEET_ID);
+    var ss = SpreadsheetApp.openById(SECRETS.SPREADSHEET_ID);
+    console.log("🛡️ [W_Seguridad] ==> 3. Spreadsheet abierto con ID: " + SECRETS.SPREADSHEET_ID);
 
     var wsUsers = ss.getSheetByName('MAESTRO_USUARIOS');
     console.log("🛡️ [W_Seguridad] ==> 4. Hoja 'MAESTRO_USUARIOS' obtenida.");
@@ -116,7 +116,7 @@ function w_upsertUsuario(payloadStr) {
 
     LOCK.waitLock(10000);
     var payload = JSON.parse(payloadStr);
-    var tabla = CONFIG.DB.USUARIOS || 'MAESTRO_USUARIOS';
+    var tabla = CONFIG.DB.USUARIOS;
 
     if (payload.ID_UUID === 'NUEVO') {
       payload.ID_UUID = Utilities.getUuid();
@@ -145,7 +145,7 @@ function w_upsertRol(payload) {
     }
 
     LOCK.waitLock(10000);
-    var tabla = CONFIG.DB.ROLES || 'MAESTRO_ROLES';
+    var tabla = CONFIG.DB.ROLES;
 
     var objGuardar = {
       ID_ROL: payload.id_rol,
@@ -216,7 +216,7 @@ function w_pingSeguridadCache() {
       return JSON.parse(datosCacheados);
     }
 
-    var ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+    var ss = SpreadsheetApp.openById(SECRETS.SPREADSHEET_ID);
     var wsUsers = ss.getSheetByName('MAESTRO_USUARIOS');
     var dataU = wsUsers.getDataRange().getValues();
     var headU = dataU[0].map(function (h) { return String(h).trim().toUpperCase(); });

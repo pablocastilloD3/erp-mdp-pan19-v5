@@ -11,26 +11,24 @@
 
 /**
  * ============================================================================
- * 0. DESPLIEGUE HTTP (FRONTEND SERVING)
+ * 0. DESPLIEGUE HTTP (FRONTEND SERVING) V2.0.0
  * ============================================================================
  */
 function doGet(e) {
   try {
     var template = HtmlService.createTemplateFromFile('Index');
-    template.APP_VERSION = (typeof CONFIG !== 'undefined' && CONFIG.VERSION) ? CONFIG.VERSION : "5.0.0";
+    template.APP_VERSION = (typeof CONFIG !== 'undefined' && CONFIG.VERSION) ? CONFIG.VERSION : "5.1.0";
+
+    // [NUEVO] - Inyectamos el mapa logico seguro como cadena JSON
+    template.CONFIG_PAYLOAD = JSON.stringify(CONFIG);
 
     return template.evaluate()
       .setTitle(CONFIG.APP_NAME || "ERP MDP - PAN19")
       .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
       .addMetaTag('viewport', 'width=device-width, initial-scale=1');
   } catch (error) {
-    console.error("[PGA] Fallo Crítico en doGet:", error);
-    return HtmlService.createHtmlOutput(
-      '<body style="background:#1a1a1a;color:white;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh">'
-      + '<div style="border:1px solid red;padding:2rem;border-radius:1rem;background:#000">'
-      + '<h2 style="color:red">⚠️ Error 500: Núcleo Detenido</h2>'
-      + '<code>' + error.message + '</code>'
-      + '</div></body>');
+    console.error("[PGA] Fallo Crítico en Renderizado:", error);
+    return HtmlService.createHtmlOutput("<h1>Falla Crítica 500</h1><p>" + error.message + "</p>");
   }
 }
 
@@ -73,7 +71,7 @@ function w_verificarEstadoSesion(moduloRequerido) {
     var email = Session.getActiveUser().getEmail();
     if (!email) return false;
 
-    var ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+    var ss = SpreadsheetApp.openById(SECRETS.SPREADSHEET_ID);
     var sheetUsers = ss.getSheetByName(CONFIG.DB.USUARIOS);
     var dataUsers = sheetUsers.getDataRange().getValues();
     var headUsers = dataUsers[0].map(function (h) { return String(h).trim().toUpperCase(); });
@@ -137,7 +135,7 @@ function w_EjecutarTransaccionSegura(idTablaConfig, idRegistro, nuevosDatos, ipC
       return JSON.stringify({ error: true, message: 'Tabla no registrada en CONFIG.DB: ' + idTablaConfig });
     }
 
-    var ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+    var ss = SpreadsheetApp.openById(SECRETS.SPREADSHEET_ID);
     var sheet = ss.getSheetByName(nombreHoja);
     if (!sheet) {
       return JSON.stringify({ error: true, message: 'Hoja no encontrada: ' + nombreHoja });
@@ -346,7 +344,7 @@ function registrarLogInterno(accion, modulo, idEntidad, anterior, nuevo, detalle
       console.error('❌ [Auditoría] Fallo CRÍTICO al escribir en la hoja de logs. Verifique que la hoja "' + CONFIG.DB.AUDIT_LOG + '" existe y que tiene permisos de escritura.', e);
       // No retornar false aquí para permitir que el flujo principal continúe si la auditoría es secundaria.
     }
-    
+
     return true;
   } catch (e) {
     console.error('❌ [Auditoría] Error en registrarLogInterno:', e);

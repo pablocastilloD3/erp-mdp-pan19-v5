@@ -1,21 +1,25 @@
 <script>
     /**
      * @file S_UpdateXML.html
-     * @version 3.0.0
+     * @version 3.1.0
      * @description Frontend Batch Final: UX Asíncrono, Sanitización XML Extrema, Impuestos/Exento y Granel.
-     * Pasar de V5.2->V5.2-UpdateXML.
+     * Integración estricta con Bóveda Singleton y Puente Zero-Trust (Eliminación de Hardcoding).
      */
 
     window.Ctrl_UpdateXML = {
-        meta: { id: 'updatexml', version: '3.0.0', titulo: 'Integración DTE' },
+        meta: { id: 'updatexml', version: '3.1.0', titulo: 'Integración DTE' },
         estado: { loteProcesado: [], alertasBloqueantes: 0, abortar: false, simuladorUI: null },
 
         init: function () { },
+
         render: function () {
-            document.getElementById('v-updatexml-resultado-prevuelo').innerHTML = `
-        <div class="text-center text-muted p-5 border border-dashed rounded">
-          <i class="bi bi-files display-1 opacity-25"></i><p class="mt-3">Seleccione archivos (XML) para iniciar.</p>
-        </div>`;
+            const container = document.getElementById('v-updatexml-resultado-prevuelo');
+            if (container) {
+                container.innerHTML = `
+                <div class="text-center text-muted p-5 border border-dashed rounded">
+                  <i class="bi bi-files display-1 opacity-25"></i><p class="mt-3">Seleccione archivos (XML) para iniciar.</p>
+                </div>`;
+            }
             this.mostrarBotonesControl(false);
             this.actualizarProgreso(0, "Esperando archivos...");
 
@@ -25,7 +29,7 @@
 
         mostrarBotonesControl: function (mostrar) {
             const panel = document.getElementById('panel-controles-lote');
-            mostrar ? panel.classList.remove('d-none') : panel.classList.add('d-none');
+            if (panel) mostrar ? panel.classList.remove('d-none') : panel.classList.add('d-none');
         },
 
         actualizarProgreso: function (porcentaje, texto) {
@@ -57,14 +61,20 @@
         },
 
         procesarArchivosLote: async function () {
-            const inputFiles = document.getElementById('file-dte-lote').files;
-            if (inputFiles.length === 0) return window.ERP_Utils.mostrarToast("Seleccione al menos un archivo.", "warning");
+            const inputElement = document.getElementById('file-dte-lote');
+            if (!inputElement || inputElement.files.length === 0) {
+                return window.ERP_Utils.mostrarToast("Seleccione al menos un archivo.", "warning");
+            }
+
+            const inputFiles = inputElement.files;
             window.ERP_Utils.mostrarLoading(true);
             this.estado.loteProcesado = [];
             this.estado.alertasBloqueantes = 0;
 
             for (let i = 0; i < inputFiles.length; i++) {
-                if (inputFiles[i].name.toLowerCase().endsWith('.xml')) await this._procesarUnXML(inputFiles[i]);
+                if (inputFiles[i].name.toLowerCase().endsWith('.xml')) {
+                    await this._procesarUnXML(inputFiles[i]);
+                }
             }
             this._ejecutarPreVueloAgrupado();
         },
@@ -101,7 +111,7 @@
                             fechaEmision: getTag('FchEmis'),
                             fechaVencimiento: getTag('FchVenc') || getTag('FchEmis'),
                             montoNeto: getTag('MntNeto'),
-                            montoExento: getTag('MntExe') || '0', // 🚀 NUEVO: Captura de Exento para DTE 34
+                            montoExento: getTag('MntExe') || '0',
                             montoIva: getTag('IVA'),
                             montoOtrosImpuestos: montoOtrosImp,
                             montoTotal: getTag('MntTotal'),
@@ -133,18 +143,30 @@
         },
 
         _ejecutarPreVueloAgrupado: function () {
+            // 🚀 PROTECCIÓN ESTRUCTURAL ZERO-TRUST
+            if (!window.CONFIG || !window.CONFIG.DB || !window.SISTEMA_ERP || !window.SISTEMA_ERP.datos) {
+                console.error("🚨 [ADC] UpdateXML: Dependencias Core no encontradas. Abortando Pre-vuelo.");
+                window.ERP_Utils.mostrarLoading(false);
+                return window.ERP_Utils.mostrarToast("Sistema no inicializado. Faltan configuraciones (CONFIG).", "danger");
+            }
+
             let matrizAlergenos = {};
             try {
-                const configs = window.SISTEMA_ERP.datos['SYS_CONFIG'] || [];
+                // Mapeo dinámico a la base de datos de Configuración
+                const configs = window.SISTEMA_ERP.datos[window.CONFIG.DB.CONFIG] || [];
                 const row = configs.find(c => c.PARAM_KEY === 'MATRIZ_ALERGENOS');
                 if (row && row.PARAM_VALUE) matrizAlergenos = JSON.parse(row.PARAM_VALUE);
-            } catch (e) { console.warn("⚠️ No se pudo cargar MATRIZ_ALERGENOS"); }
+            } catch (e) {
+                console.warn("⚠️ No se pudo cargar MATRIZ_ALERGENOS desde Bóveda.");
+            }
 
             const agrupados = {};
-            this.estado.loteProcesado.forEach(dte => {
 
-                // --- INICIO BLOQUE MODIFICADO ---
-                let alergenosDelDocumento = new Set(); // Recolector global de la factura
+            // Mapeo dinámico al Libro de Compras
+            const dbCompras = window.SISTEMA_ERP.datos[window.CONFIG.DB.COMPRAS] || [];
+
+            this.estado.loteProcesado.forEach(dte => {
+                let alergenosDelDocumento = new Set();
 
                 dte.items.forEach(item => {
                     const nombreUpper = String(item.nombre).toUpperCase();
@@ -155,20 +177,16 @@
                             }
                         }
                     }
-                    // Agregamos los alérgenos de este ítem al recolector global del documento
                     item.alergenosDetectados.forEach(a => alergenosDelDocumento.add(a));
 
                     item.conversion = this._sugerirConversion(item.cantidad, item.unidad, item.nombre);
                     if (item.conversion.modificado) dte.requiereRevisionGranel = true;
                 });
 
-                // 🚀 NUEVO: Definimos el campo ISO_ALERGENOS para el Lote/Factura
                 dte.isoAlergenos = alergenosDelDocumento.size > 0 ? Array.from(alergenosDelDocumento).join(', ') : 'NO';
-                // --- FIN BLOQUE MODIFICADO ---
 
                 const rutLimpio = String(dte.rutEmisor).replace(/\./g, '').trim().toUpperCase();
                 const folioNum = String(Number(dte.folio));
-                const dbCompras = window.SISTEMA_ERP.datos['LIBRO_COMPRAS'] || [];
 
                 dte.existe = dbCompras.some(f =>
                     String(f.RUT_EMISOR).replace(/\./g, '').trim().toUpperCase() === rutLimpio &&
@@ -179,6 +197,7 @@
                 if (!agrupados[dte.rutEmisor]) agrupados[dte.rutEmisor] = { razonSocial: dte.razonSocial, dtes: [] };
                 agrupados[dte.rutEmisor].dtes.push(dte);
             });
+
             this._renderizarTablaAgrupada(agrupados);
         },
 
@@ -201,7 +220,7 @@
                             <strong class="text-info-emphasis"><i class="bi bi-info-circle me-1"></i>Conversión de Granel Sugerida:</strong><br>`;
 
                         dte.items.forEach(item => {
-                            if (item.conversion.modificado) {
+                            if (item.conversion && item.conversion.modificado) {
                                 const idInputCant = `cant-${safeRut}-${dte.folio}-${item.idx}`;
                                 const idInputUnd = `und-${safeRut}-${dte.folio}-${item.idx}`;
                                 bloqueRevision += `
@@ -235,7 +254,9 @@
                 });
                 html += `</ul></div>`;
             }
-            document.getElementById('v-updatexml-resultado-prevuelo').innerHTML = html;
+            const container = document.getElementById('v-updatexml-resultado-prevuelo');
+            if (container) container.innerHTML = html;
+
             if (this.estado.loteProcesado.length > 0 && this.estado.alertasBloqueantes < this.estado.loteProcesado.length) {
                 this.mostrarBotonesControl(true);
             }
@@ -243,7 +264,8 @@
 
         cancelarProceso: function () {
             this.estado.abortar = true;
-            document.getElementById('file-dte-lote').value = '';
+            const fileInput = document.getElementById('file-dte-lote');
+            if (fileInput) fileInput.value = '';
             this.render();
         },
 
@@ -324,7 +346,8 @@
         },
 
         _renderizarReporteLote: function (resultados) {
-            document.getElementById('file-dte-lote').value = '';
+            const fileInput = document.getElementById('file-dte-lote');
+            if (fileInput) fileInput.value = '';
             const progressContainer = document.getElementById('dte-progress-bar')?.parentElement;
             if (progressContainer) progressContainer.classList.add('d-none');
 
@@ -349,7 +372,8 @@
                          </div>`;
             }
 
-            document.getElementById('v-updatexml-resultado-prevuelo').innerHTML = html;
+            const container = document.getElementById('v-updatexml-resultado-prevuelo');
+            if (container) container.innerHTML = html;
             window.ERP_Utils.mostrarLoading(false);
 
             if (resultados.successes.length > 0) {

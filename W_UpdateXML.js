@@ -9,7 +9,7 @@ function w_updatexml_procesarIntegracion(payloadStr) {
     try {
         const activeSS = SpreadsheetApp.getActiveSpreadsheet();
         if (activeSS) {
-            CONFIG.SPREADSHEET_ID = activeSS.getId();
+            SECRETS.SPREADSHEET_ID = activeSS.getId();
         }
 
         const email = Session.getActiveUser().getEmail();
@@ -37,12 +37,12 @@ function w_updatexml_procesarIntegracion(payloadStr) {
 }
 
 function _logica_ejecutarIntegracionLote(loteDTE, email, correlationId, ip) {
-    const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+    const ss = SpreadsheetApp.openById(SECRETS.SPREADSHEET_ID);
     const logTablas = [];
     const resultados = { successes: [], errors: [], certUrl: "" };
 
     let folder;
-    try { folder = DriveApp.getFolderById(CONFIG.FOLDER_XML_BODEGA); }
+    try { folder = DriveApp.getFolderById(SECRETS.FOLDER_XML_BODEGA); }
     catch (e) { folder = DriveApp.getRootFolder(); }
 
     let htmlCertificado = `

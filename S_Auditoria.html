@@ -1,18 +1,18 @@
 <script>
     /**
-     * @file S_Auditoria.html.
-     * @version 5.2.1
+     * @file S_Auditoria.html
+     * @version 5.5.0
      * @project ERP MDP PAN19 - Sistema de Gestión Industrial
      * @author Murphy - Arquitecto PMDC
      * @compliance ISO 22000 / SII Chile / URS-28
-     * @description Integración de Motor Pre-Procesador de Sesiones Dinámico (Aislamiento de Conexiones).
-     * Pasar de V5.2->V5.2-Auditoria->DEV.
+     * @description Integración de Motor Pre-Procesador de Sesiones Dinámico.
+     * Refactorizado con Patrón Self-Healing UI, Type Guards (Anti-Crash) y Puente Zero-Trust.
      */
 
     window.Ctrl_Auditoria = {
         meta: {
             id: 'auditoria',
-            version: '5.2.1',
+            version: '5.5.0',
             titulo: 'Auditoría Forense',
             icono: 'bi-shield-lock-fill',
             tematica: 'Administración',
@@ -22,17 +22,26 @@
         estado: {
             filtroUser: '',
             filtroAccion: '',
-            filtroTiempo: '30', // '1', '7', '30', 'mes', 'todo'
+            filtroTiempo: '30',
             limiteFilas: 15,
             idRuptura: null,
-            soloRupturas: false
+            soloRupturas: false,
+            listenerActivo: false
         },
 
         init: function () {
-            window.addEventListener('erp-datos-listos', () => {
-                if (window.SISTEMA_ERP.moduloActual === this.meta.id) this.render();
-            });
-            if (window.SISTEMA_ERP?.datos?.['SYS_AUDIT_LOG']) this.render();
+            console.log("🟢 [ADC] Auditoria: Iniciando controlador.");
+
+            // Suscripción Controlada para evitar Memory Leaks
+            if (!this.estado.listenerActivo) {
+                window.addEventListener('erp-datos-listos', () => {
+                    if (window.SISTEMA_ERP && window.SISTEMA_ERP.moduloActual === this.meta.id) {
+                        this.render();
+                    }
+                });
+                this.estado.listenerActivo = true;
+            }
+            // Delegamos el renderizado inicial al bus de eventos y al enrutador SPA. No se ejecuta this.render() directo aquí.
         },
 
         setFiltro: function (key, val) {
@@ -68,39 +77,31 @@
             });
         },
 
-        // 🚀 FIX V5.2.2: MOTOR DE SESIONES DINÁMICO (Aislamiento Forense en Memoria)
         _preprocesarSesiones: function (data) {
             if (!data || data.length === 0) return;
-            // Evitar doble procesamiento si ya se calculó en este ciclo de RAM
             if (data[0]._SESSION_ID) return;
 
-            // Orden cronológico estricto (del más viejo al más nuevo) para trazar la historia real
             const sorted = [...data].sort((a, b) => new Date(a.TIMESTAMP) - new Date(b.TIMESTAMP));
             const sesionesActivas = {};
 
             sorted.forEach(log => {
-                const user = log.USER_EMAIL || 'DESCONOCIDO';
+                const user = String(log.USER_EMAIL || 'DESCONOCIDO');
                 const action = String(log.ACTION_TYPE || '').toUpperCase();
 
-                // 1. LÍMITE DE INICIO: Si es un login exitoso, creamos un nuevo bloque de sesión
                 if (action.includes('AUTH_SUCCESS') || action.includes('AUTH_REGISTER')) {
                     const timeHash = new Date(log.TIMESTAMP).getTime().toString().slice(-5);
                     const randHash = Math.random().toString(36).substring(2, 5).toUpperCase();
                     sesionesActivas[user] = `S-${timeHash}-${randHash}`;
                 }
 
-                // 2. FALLBACK: Si hay un evento pero el usuario no tiene sesión activa (ej. acciones del sistema)
                 if (!sesionesActivas[user]) {
-                    // FIX: Garantizar que cada bloque de sesión fallback sea único para evitar agrupar eventos no relacionados.
                     const timeHash = new Date(log.TIMESTAMP).getTime().toString().slice(-5);
                     const randHash = Math.random().toString(36).substring(2, 5).toUpperCase();
                     sesionesActivas[user] = `SYS-${user.split('@')[0].toUpperCase().substring(0, 4)}-${randHash}`;
                 }
 
-                // 3. AMARRE: Etiquetamos el registro con el ID de sesión vigente
                 log._SESSION_ID = sesionesActivas[user];
 
-                // 4. LÍMITE DE CIERRE: Si el usuario sale o se le corta la sesión, destruimos el bloque
                 if (action.includes('LOGOUT') || action.includes('TIMEOUT') || action.includes('REJECT')) {
                     delete sesionesActivas[user];
                 }
@@ -108,21 +109,28 @@
         },
 
         render: function () {
-            const raw = window.SISTEMA_ERP.datos['SYS_AUDIT_LOG'] || [];
+            // Protección Estructural
+            if (!window.SISTEMA_ERP || !window.SISTEMA_ERP.datos || !window.CONFIG || !window.CONFIG.DB) {
+                console.warn("⚠️ [ADC] Auditoria: Render abortado. Faltan dependencias core.");
+                return;
+            }
 
-            // 🚀 Inyectamos los límites de sesión antes de filtrar
+            const raw = window.SISTEMA_ERP.datos[window.CONFIG.DB.AUDIT_LOG];
+            if (!raw || !Array.isArray(raw)) {
+                console.warn("⚠️ [ADC] Auditoria: Tabla de logs no encontrada en la Bóveda.");
+                return;
+            }
+
             this._preprocesarSesiones(raw);
-
             const logsFiltrados = this.aplicarFiltros(raw).reverse();
 
-            // 1. GESTIÓN DE ALERTA GLOBAL
             const alertZone = document.getElementById('audit-integrity-alert');
             if (alertZone) {
                 alertZone.innerHTML = this.estado.idRuptura
                     ? `<div class="alert alert-danger shadow pulse-danger-glow d-flex justify-content-between align-items-center mb-3">
                     <div>
                         <i class="bi bi-exclamation-triangle-fill me-2 fs-5"></i>
-                        <strong>BRECHA DE INTEGRIDAD DETECTADA:</strong> El registro <code>${this.estado.idRuptura}</code> no coincide con su firma digital.
+                        <strong>BRECHA DETECTADA:</strong> Registro <code>${this.estado.idRuptura}</code> corrupto.
                     </div>
                     <div class="d-flex gap-2">
                         <button class="btn btn-sm btn-dark" onclick="window.Ctrl_Auditoria.setFiltro('soloRupturas', true)">Aislar Error</button>
@@ -133,149 +141,171 @@
 
             this.poblarFiltros(raw);
 
-            // 2. RENDERIZADO ATÓMICO (Colorimetría y Agrupación por Sesión Real)
-            Factory.crearTabla('v-auditoria-contenedor-principal', {
-                data: logsFiltrados,
-                idKey: 'ID_LOG', // Fallback dinámico manejado en las celdas
-                config: { rowsPerPage: parseInt(this.estado.limiteFilas), pagination: true, rowSelector: true, columnasCRUD: false },
-                columns: [
-                    {
-                        label: 'Marca de Tiempo', key: 'TIMESTAMP',
-                        render: (v, r) => {
-                            const pk = r.ID_LOG || r.ID;
-                            const esMalo = pk === this.estado.idRuptura;
-                            return `<div class="${esMalo ? 'bg-danger bg-opacity-25 p-1 rounded' : ''}">
-                                    <span class="small font-monospace fw-bold text-secondary">${new Date(v).toLocaleString('es-CL')}</span>
-                                    ${esMalo ? '<br><span class="badge bg-danger pulse"><i class="bi bi-x-octagon"></i> CORRUPTO</span>' : ''}
-                                </div>`;
-                        }
-                    },
-                    {
-                        label: 'Identidad', key: 'USER_EMAIL',
-                        render: (v) => {
-                            const inicial = (v || 'U').charAt(0).toUpperCase();
-                            return `<div class="d-flex align-items-center">
-                                        <div class="bg-secondary text-white fw-bold text-center rounded-circle me-2" style="width:28px;height:28px;line-height:28px;font-size:0.75rem;">${inicial}</div>
-                                        <span class="text-dark fw-bold small">${v}</span>
+            // 🚀 PATRÓN ZERO-TRUST: SELF-HEALING UI
+            let container = document.getElementById('v-auditoria-contenedor-principal');
+
+            if (!container) {
+                console.warn("⚠️ [ADC] Auditoria: Contenedor no detectado. Iniciando inyección dinámica (Self-Healing)...");
+                const viewPadre = document.getElementById('view-auditoria');
+
+                if (viewPadre) {
+                    const nuevoContenedor = document.createElement('div');
+                    nuevoContenedor.id = 'v-auditoria-contenedor-principal';
+                    nuevoContenedor.className = 'table-responsive mt-3';
+                    nuevoContenedor.style.minHeight = '500px';
+                    viewPadre.appendChild(nuevoContenedor);
+                    container = nuevoContenedor;
+                    console.log("✅ [ADC] Auditoria: Contenedor inyectado dinámicamente con éxito.");
+                } else {
+                    console.error("🚨 [ADC] Falla Crítica: La vista padre 'view-auditoria' tampoco existe.");
+                    return;
+                }
+            }
+
+            // Ejecución de la librería Factory
+            if (window.Factory && typeof window.Factory.crearTabla === 'function') {
+                window.Factory.crearTabla('v-auditoria-contenedor-principal', {
+                    data: logsFiltrados,
+                    idKey: 'ID_LOG',
+                    config: { rowsPerPage: parseInt(this.estado.limiteFilas), pagination: true, rowSelector: true, columnasCRUD: false },
+                    columns: [
+                        {
+                            label: 'Marca de Tiempo', key: 'TIMESTAMP',
+                            render: (v, r) => {
+                                const pk = r.ID_LOG || r.ID;
+                                const esMalo = pk === this.estado.idRuptura;
+                                const fechaValidada = v ? new Date(v).toLocaleString('es-CL') : '--';
+                                return `<div class="${esMalo ? 'bg-danger bg-opacity-25 p-1 rounded' : ''}">
+                                        <span class="small font-monospace fw-bold text-secondary">${fechaValidada}</span>
                                     </div>`;
-                        }
-                    },
-                    {
-                        label: 'Operación', key: 'ACTION_TYPE',
-                        render: (v) => {
-                            let color = 'bg-secondary';
-                            if (v.includes('CREATE') || v.includes('SUCCESS')) color = 'bg-success';
-                            else if (v.includes('UPDATE')) color = 'bg-warning text-dark';
-                            else if (v.includes('DELETE') || v.includes('REJECT') || v.includes('ERROR')) color = 'bg-danger';
-                            else if (v.includes('AUTH')) color = 'bg-info text-dark';
-                            return `<span class="badge ${color} border shadow-sm font-monospace extra-small px-2 py-1">${v}</span>`;
-                        }
-                    },
-                    {
-                        label: 'Módulo', key: 'MODULO',
-                        render: (v) => `<span class="small fw-bold text-uppercase text-primary">${v}</span>`
-                    },
-                    {
-                        label: 'Bloque de Sesión', key: 'ID_LOG',
-                        render: (valOriginal, row) => {
-                            // 🚀 FIX: Garantizamos la lectura correcta de la llave primaria
-                            const id = row.ID_LOG || row.ID || 'N/A';
+                            }
+                        },
+                        {
+                            label: 'Identidad', key: 'USER_EMAIL',
+                            render: (v) => {
+                                const strUser = String(v || 'Desconocido');
+                                return `<div class="d-flex align-items-center">
+                                            <div class="bg-secondary text-white fw-bold text-center rounded-circle me-2" style="width:28px;height:28px;line-height:28px;font-size:0.75rem;">${strUser.charAt(0).toUpperCase()}</div>
+                                            <span class="text-dark fw-bold small">${strUser}</span>
+                                        </div>`;
+                            }
+                        },
+                        {
+                            label: 'Operación', key: 'ACTION_TYPE',
+                            render: (v) => {
+                                const strAccion = String(v || '').toUpperCase();
+                                let color = 'bg-secondary';
+                                if (strAccion.includes('CREATE') || strAccion.includes('SUCCESS')) color = 'bg-success';
+                                else if (strAccion.includes('UPDATE')) color = 'bg-warning text-dark';
+                                else if (strAccion.includes('DELETE') || strAccion.includes('ERROR')) color = 'bg-danger';
+                                else if (strAccion.includes('AUTH')) color = 'bg-info text-dark';
+                                return `<span class="badge ${color} border shadow-sm font-monospace extra-small px-2 py-1">${strAccion || 'N/A'}</span>`;
+                            }
+                        },
+                        {
+                            label: 'Módulo', key: 'MODULO',
+                            render: (v) => `<span class="small fw-bold text-uppercase text-primary">${String(v || 'SISTEMA')}</span>`
+                        },
+                        {
+                            label: 'Sesión', key: 'ID_LOG',
+                            render: (valOriginal, row) => {
+                                const id = row.ID_LOG || row.ID || 'N/A';
+                                const sid = row._SESSION_ID || 'DESC';
+                                const esMutacion = row.VALOR_NUEVO && row.VALOR_NUEVO !== 'N/A';
 
-                            // Extraemos el ID de sesión generado por nuestro motor en memoria
-                            const sid = row._SESSION_ID || 'DESC';
-                            const esMutacion = row.VALOR_NUEVO && row.VALOR_NUEVO !== 'N/A';
-
-                            return `
-                        <div class="d-flex gap-2 align-items-center">
-                            <button class="btn btn-sm btn-outline-primary py-0 px-2 font-monospace extra-small rounded-pill fw-bold" 
-                                onclick="window.Ctrl_Auditoria.abrirRelato('${id}', '${sid}')" title="Ver Historia de Sesión">
-                                <i class="bi bi-diagram-3 me-1"></i>${sid}
-                            </button>
-                            ${esMutacion ? `
-                                <button class="btn btn-sm btn-success px-2 py-0 shadow-sm fw-bold extra-small rounded" onclick="window.Ctrl_Auditoria.abrirDiff('${id}')" title="Inspeccionar Mutación">
-                                    DIFF
-                                </button>` : ''}
-                        </div>`;
+                                return `
+                            <div class="d-flex gap-2 align-items-center">
+                                <button class="btn btn-sm btn-outline-primary py-0 px-2 font-monospace extra-small rounded-pill fw-bold" 
+                                    onclick="window.Ctrl_Auditoria.abrirRelato('${id}', '${sid}')" title="Ver Historia"><i class="bi bi-diagram-3 me-1"></i>${sid}</button>
+                                ${esMutacion ? `<button class="btn btn-sm btn-success px-2 py-0 shadow-sm fw-bold extra-small rounded" onclick="window.Ctrl_Auditoria.abrirDiff('${id}')">DIFF</button>` : ''}
+                            </div>`;
+                            }
                         }
-                    }
-                ]
-            });
+                    ]
+                });
+            }
         },
 
         verificarIntegridad: function () {
-            window.ERP_Utils?.mostrarLoading(true);
+            if (window.ERP_Utils && typeof window.ERP_Utils.mostrarLoading === 'function') {
+                window.ERP_Utils.mostrarLoading(true);
+            }
+
             google.script.run
                 .withSuccessHandler(resStr => {
-                    window.ERP_Utils?.mostrarLoading(false);
+                    if (window.ERP_Utils && typeof window.ERP_Utils.mostrarLoading === 'function') {
+                        window.ERP_Utils.mostrarLoading(false);
+                    }
                     const res = JSON.parse(resStr);
                     if (res.integro) {
                         this.estado.idRuptura = null;
-                        window.ERP_Utils.mostrarToast("Validación Exitosa: Cadena intacta.", "success");
+                        if (window.ERP_Utils) window.ERP_Utils.mostrarToast("Validación Exitosa: Cadena intacta.", "success");
                     } else {
                         this.estado.idRuptura = res.idRuptura;
-                        window.ERP_Utils.mostrarToast("🚨 FALLO DE SEGURIDAD DETECTADO", "danger");
+                        if (window.ERP_Utils) window.ERP_Utils.mostrarToast("🚨 FALLO DE SEGURIDAD DETECTADO", "danger");
                     }
                     this.render();
                 })
                 .w_verificarIntegridadLogs();
         },
 
-        /**
-         * @function abrirRelato
-         * Construye la historia cronológica respetando ESTRICTAMENTE el ID de Sesión.
-         */
         abrirRelato: function (idRef, sid) {
-            const raw = window.SISTEMA_ERP.datos['SYS_AUDIT_LOG'] || [];
+            const raw = window.SISTEMA_ERP.datos[window.CONFIG.DB.AUDIT_LOG] || [];
             const base = raw.find(l => (l.ID_LOG || l.ID) === idRef);
             if (!base) return;
 
-            // 🚀 AISLAMIENTO PERFECTO: Solo traemos eventos que compartan el ID de Sesión exacto.
             const eventos = raw.filter(l => l._SESSION_ID === sid)
                 .sort((a, b) => new Date(a.TIMESTAMP) - new Date(b.TIMESTAMP));
 
-            const bodyId = Factory.abrirModal({ titulo: `Línea de Tiempo - Conexión: ${sid}`, tamaño: 'modal-lg' });
+            if (window.Factory && typeof window.Factory.abrirModal === 'function') {
+                const bodyId = window.Factory.abrirModal({ titulo: `Línea de Tiempo - Conexión: ${sid}`, tamaño: 'modal-lg' });
+                const modalBody = document.getElementById(bodyId);
 
-            document.getElementById(bodyId).innerHTML = `
-            <div class="p-4 bg-light">
-                <div class="alert alert-dark border-0 py-2 small mb-4 shadow-sm d-flex align-items-center">
-                    <div class="bg-secondary text-white fw-bold text-center rounded-circle me-3" style="width:35px;height:35px;line-height:35px;">${base.USER_EMAIL.charAt(0).toUpperCase()}</div>
-                    <div>
-                        <div class="fw-bold fs-6">${base.USER_EMAIL}</div>
-                        <div class="text-muted extra-small">Registros agrupados bajo la sesión <b>${sid}</b>.</div>
-                    </div>
-                </div>
-
-                <div class="timeline border-start border-3 ms-3 ps-4" style="border-color: #0d6efd !important;">
-                    ${eventos.map(e => {
-                const pk = e.ID_LOG || e.ID;
-                const esCorrupto = pk === this.estado.idRuptura;
-                const esActual = pk === idRef;
-                let colorAcc = e.ACTION_TYPE.includes('CREATE') ? 'text-success' : (e.ACTION_TYPE.includes('DELETE') ? 'text-danger' : 'text-primary');
-
-                return `
-                        <div class="mb-4 position-relative ${esCorrupto ? 'p-2 bg-danger bg-opacity-10 rounded border border-danger' : ''}">
-                            <i class="bi bi-record-circle-fill position-absolute ${esActual ? 'text-warning fs-5' : colorAcc}" 
-                               style="left: -2.35rem; top: -0.2rem; background: #f8f9fa;"></i>
-                            
-                            <div class="d-flex justify-content-between align-items-start mb-1">
-                                <span class="badge bg-dark text-white font-monospace shadow-sm">${new Date(e.TIMESTAMP).toLocaleTimeString('es-CL')}</span>
-                                ${(e.VALOR_NUEVO && e.VALOR_NUEVO !== 'N/A') ? `<button class="btn btn-outline-success btn-sm fw-bold px-3 py-0 shadow-sm rounded-pill extra-small" onclick="window.Ctrl_Auditoria.abrirDiff('${pk}')"><i class="bi bi-file-diff me-1"></i> VER CAMBIOS</button>` : ''}
+                if (modalBody) {
+                    modalBody.innerHTML = `
+                    <div class="p-4 bg-light">
+                        <div class="alert alert-dark border-0 py-2 small mb-4 shadow-sm d-flex align-items-center">
+                            <div class="bg-secondary text-white fw-bold text-center rounded-circle me-3" style="width:35px;height:35px;line-height:35px;">${String(base.USER_EMAIL || 'U').charAt(0).toUpperCase()}</div>
+                            <div>
+                                <div class="fw-bold fs-6">${base.USER_EMAIL || 'Desconocido'}</div>
+                                <div class="text-muted extra-small">Registros agrupados bajo la sesión <b>${sid}</b>.</div>
                             </div>
-                            
-                            <div class="card shadow-sm border-0 mt-2">
-                                <div class="card-body py-2 px-3 d-flex align-items-center gap-2">
-                                    <span class="badge bg-light text-dark border font-monospace extra-small">${e.ACTION_TYPE}</span>
-                                    <span class="small fw-bold text-muted">en módulo <span class="text-primary">${e.MODULO}</span></span>
-                                </div>
-                            </div>
-                        </div>`;
-            }).join('')}
-                </div>
-            </div>`;
+                        </div>
+                        <div class="timeline border-start border-3 ms-3 ps-4" style="border-color: #0d6efd !important;">
+                            ${eventos.map(e => {
+                        const pk = e.ID_LOG || e.ID;
+                        const esCorrupto = pk === this.estado.idRuptura;
+                        const esActual = pk === idRef;
+                        const strAcc = String(e.ACTION_TYPE || '');
+                        let colorAcc = strAcc.includes('CREATE') ? 'text-success' : (strAcc.includes('DELETE') ? 'text-danger' : 'text-primary');
+
+                        return `
+                                <div class="mb-4 position-relative ${esCorrupto ? 'p-2 bg-danger bg-opacity-10 rounded border border-danger' : ''}">
+                                    <i class="bi bi-record-circle-fill position-absolute ${esActual ? 'text-warning fs-5' : colorAcc}" 
+                                       style="left: -2.35rem; top: -0.2rem; background: #f8f9fa;"></i>
+                                    
+                                    <div class="d-flex justify-content-between align-items-start mb-1">
+                                        <span class="badge bg-dark text-white font-monospace shadow-sm">${e.TIMESTAMP ? new Date(e.TIMESTAMP).toLocaleTimeString('es-CL') : '--:--'}</span>
+                                        ${(e.VALOR_NUEVO && e.VALOR_NUEVO !== 'N/A') ? `<button class="btn btn-outline-success btn-sm fw-bold px-3 py-0 shadow-sm rounded-pill extra-small" onclick="window.Ctrl_Auditoria.abrirDiff('${pk}')"><i class="bi bi-file-diff me-1"></i> VER CAMBIOS</button>` : ''}
+                                    </div>
+                                    
+                                    <div class="card shadow-sm border-0 mt-2">
+                                        <div class="card-body py-2 px-3 d-flex align-items-center gap-2">
+                                            <span class="badge bg-light text-dark border font-monospace extra-small">${strAcc}</span>
+                                            <span class="small fw-bold text-muted">en módulo <span class="text-primary">${e.MODULO || 'SISTEMA'}</span></span>
+                                        </div>
+                                    </div>
+                                </div>`;
+                    }).join('')}
+                        </div>
+                    </div>`;
+                }
+            }
         },
 
         abrirDiff: function (id) {
-            const log = window.SISTEMA_ERP.datos['SYS_AUDIT_LOG'].find(l => (l.ID_LOG || l.ID) === id);
+            const raw = window.SISTEMA_ERP.datos[window.CONFIG.DB.AUDIT_LOG] || [];
+            const log = raw.find(l => (l.ID_LOG || l.ID) === id);
             if (!log) return;
             const html = `
             <div class="p-4">
@@ -294,7 +324,10 @@
                     <b>DIGITAL SIGNATURE (SHA-256):</b> ${log.HASH_RECORD || 'NO DISPONIBLE'}
                 </div>
             </div>`;
-            window.ERP_Utils.abrirModalDinamico("DETALLE TÉCNICO DE MUTACIÓN", html, 'modal-lg');
+
+            if (window.ERP_Utils && typeof window.ERP_Utils.abrirModalDinamico === 'function') {
+                window.ERP_Utils.abrirModalDinamico("DETALLE TÉCNICO DE MUTACIÓN", html, 'modal-lg');
+            }
         },
 
         generarFilasDiff: function (ant, nue) {
@@ -309,10 +342,10 @@
             const sU = document.getElementById('filter-audit-user');
             const sA = document.getElementById('filter-audit-action');
             if (sU && sU.options.length <= 1) {
-                [...new Set(data.map(l => l.USER_EMAIL))].sort().forEach(u => sU.add(new Option(u, u)));
+                [...new Set(data.map(l => l.USER_EMAIL).filter(Boolean))].sort().forEach(u => sU.add(new Option(u, u)));
             }
             if (sA && sA.options.length <= 1) {
-                [...new Set(data.map(l => l.ACTION_TYPE))].sort().forEach(a => sA.add(new Option(a, a)));
+                [...new Set(data.map(l => l.ACTION_TYPE).filter(Boolean))].sort().forEach(a => sA.add(new Option(a, a)));
             }
         }
     };
