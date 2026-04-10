@@ -184,6 +184,60 @@ El módulo `S_UpdateXML.html` (versión 3.0.0) es el controlador de interfaz enc
 * **Motor Heurístico de Granel (Human-in-the-Loop):** Implementa la función `_sugerirConversion` para auditar inconsistencias en las unidades de medida provistas por los proveedores. Si detecta fracciones en unidades enteras (ej. 2.5 UN) o medidas en menor escala (GR, ML), ejecuta una conversión matemática a escalas industriales (KG, LT) e infiere la magnitud basándose en palabras clave del producto. Estas sugerencias habilitan campos interactivos en la interfaz, exigiendo que el operador valide o corrija la conversión antes de procesar el lote.
 * **Simulador Visual Asíncrono (Optimistic UI):** En el método `confirmarLote`, el módulo cosecha las correcciones manuales y envía todos los documentos válidos en un único bloque atómico al servidor para garantizar la generación de un solo Certificado ISO consolidado. Para evitar que la pantalla se congele durante el proceso backend, despliega un simulador visual (`setInterval`) que calcula un tiempo de espera por documento, animando la barra de progreso y desvaneciendo las filas de la tabla una a una, brindando retroalimentación continua al usuario.
 
+### Documentación de Módulo: Maestro de Proveedores (S_Proveedores, V_Proveedores y W_Proveedores)
+
+**ID del Módulo:** `proveedores`  
+**Versión Actual:** `1.11.0`  
+**Estado:** `Release Candidate (Estabilizado)`
+
+#### 1. Descripción Operativa
+
+El módulo de Proveedores es el núcleo de gestión de entidades comerciales externas. Su objetivo es centralizar la información administrativa, financiera y de inocuidad, permitiendo un control **360°** sobre la cadena de suministro, alineado con las normativas **ISO 22000** y el flujo de **DTE del SII Chile**.
+
+#### 2. Arquitectura de Archivos
+
+Bajo el estándar de "Dumb Server", el módulo se compone de:
+
+* **V_Proveedores.html (Vista):** Contenedor SPA en Bootstrap 5.3. Gestiona la interfaz de filtros, la botonera de acciones y el área de renderizado de tablas dinámicas.
+* **S_Proveedores.html (Controlador):** Lógica de negocio en el cliente. Procesa la hidratación de datos desde la RAM, el motor de gráficos vectoriales (SVG) y el enrutamiento transaccional hacia el núcleo.
+
+#### 3. Modelo de Datos (URS-28 Mapping)
+
+El módulo opera sobre la tabla `MAESTRO_PROVEEDORES` utilizando `RUT_ENTIDAD` como llave primaria (PK) inmutable.
+
+| Campo (Header) | Tipo | Descripción / Regla |
+| :--- | :--- | :--- |
+| `RUT_ENTIDAD` | PK | Identidad tributaria validada mediante algoritmo Módulo 11. |
+| `RAZON_SOCIAL` | String | Nombre legal de la entidad (Upper Case). |
+| `ISO_RIESGO` | Enum | Estado de inocuidad: `ACTIVO`, `BLOQUEADO`, `EVALUACION`. |
+| `STATUS` | Enum | Estado lógico en sistema: `ACTIVO`, `INACTIVO`. |
+| `CONDICION_PAGO` | String | Términos comerciales de tesorería. |
+| `OBSERVACIONES` | Text | Notas preventivas de auditoría. |
+
+#### 4. Funcionalidades Críticas y BI en Memoria
+
+##### A. Análisis 360° (Full Traceability)
+
+Motor de cruce relacional en RAM que integra tres dimensiones del dato:
+
+1. **Dimensión Operativa:** Historial de facturas recibidas desde `LIBRO_COMPRAS`.
+2. **Dimensión Financiera:** Cuotas pendientes y estado de pago desde `CUENTAS_POR_PAGAR`.
+3. **Dimensión Analítica:** Gráfico de tendencia de inversión (Línea) de los últimos 12 meses móviles.
+
+##### B. Motor Gráfico SVG Nativo
+
+Implementación de **Business Intelligence (BI)** sin dependencias externas. Genera representaciones visuales de series de tiempo utilizando vectores SVG calculados en tiempo real, optimizando el rendimiento del navegador y respetando la arquitectura **Zero Trust**.
+
+##### C. Matriz de Alérgenos por Excepción
+
+Protocolo de seguridad alimentaria que realiza un *Join* dinámico con `MAESTRO_ITEMS`. Solo visualiza y alerta sobre productos con riesgos biológicos declarados, eliminando el ruido visual de suministros neutros.
+
+#### 5. Protocolos de Seguridad y Cumplimiento
+
+* **Integridad Forense:** Todas las mutaciones (Altas y Ediciones) se canalizan a través de `w_EjecutarTransaccionSegura` en `Core.js`, registrando la IP del cliente y generando un hash SHA-256 para la auditoría posterior.
+* **Zero-Trust UI:** La edición de registros está delegada a la función `Factory._bridge` de `Lib_Factory`, asegurando que no existan disparadores de código huérfanos en el DOM.
+* **ISO 22000:** Validación obligatoria del estado de riesgo del proveedor antes de permitir la recepción de lotes en bodega (Módulos dependientes).
+
 ---
 
 ## 📜 Estándares de Cumplimiento
