@@ -51,8 +51,18 @@
                         <label class="small text-muted fw-bold mb-1">Sistema</label>
                         <select id="filter-prov-sys" class="form-select form-select-sm bg-light border-0"
                             onchange="window.Ctrl_Proveedores.setFiltro('sys', this.value)">
-                            <option value="VIGENTE">Vigentes</option>
+                            <option value="ACTIVO">Activos</option>
                             <option value="INACTIVO">Inactivos (Papelera)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="small text-muted fw-bold mb-1">Mostrar</label>
+                        <select id="filter-prov-limit" class="form-select form-select-sm bg-light border-0"
+                            onchange="window.Ctrl_Proveedores.setFiltro('limite', this.value)">
+                            <option value="15">15 filas</option>
+                            <option value="30">30 filas</option>
+                            <option value="50">50 filas</option>
+                            <option value="100">100 filas</option>
                         </select>
                     </div>
                 </div>

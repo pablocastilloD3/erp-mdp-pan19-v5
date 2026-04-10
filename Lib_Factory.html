@@ -76,7 +76,8 @@
                 ${inst.columns.map(c => `<td class="px-3">${c.render ? c.render(r[c.key], r) : (r[c.key] || '-')}</td>`).join('')}
                 ${inst.config.columnasCRUD ? `
                     <td class="text-end px-4">
-                        <button class="btn btn-sm btn-light border rounded-pill shadow-sm" onclick="Factory._bridge('${id}', '${r[inst.idKey]}')">
+                        <button class="btn btn-sm btn-light border rounded-pill shadow-sm"
+                            onclick="Factory._bridge('v-proveedores-contenedor-principal', '92580000-7')">
                             <i class="bi bi-pencil-fill text-primary"></i> Editar
                         </button>
                     </td>` : ''}
@@ -137,7 +138,8 @@
                         <h6 class="modal-title fw-bold text-uppercase small text-primary">${titulo}</h6>
                         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                     </div>
-                    <div id="factory-modal-body" class="modal-body p-0 overflow-auto" style="max-height: 85vh;"></div>
+                    <div id="factory-modal-body" class="modal-body p-4
+                     overflow-auto" style="max-height: 85vh;"></div>
                 </div>
             </div>`;
 

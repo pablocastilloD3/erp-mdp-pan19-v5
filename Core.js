@@ -23,7 +23,7 @@ function doGet(e) {
     template.CONFIG_PAYLOAD = JSON.stringify(CONFIG);
 
     return template.evaluate()
-      .setTitle(CONFIG.APP_NAME + " - v" + CONFIG.VERSION || "ERP MDP - PAN19")
+      .setTitle(CONFIG.APP_NAME + " - v" + CONFIG.VERSION + " (" + CONFIG.ENV + ")" || "ERP MDP - PAN19")
       .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
       .addMetaTag('viewport', 'width=device-width, initial-scale=1');
   } catch (error) {
