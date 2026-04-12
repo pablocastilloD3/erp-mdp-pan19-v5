@@ -1,7 +1,7 @@
 <script>
     /**
      * @file Lib_Factory.html
-     * @version 5.0.0 - Soporte Forense y Paginación Dinámica
+     * @version 5.3.0 - Arquitectura Visual Segregada e Índice Dinámico Paginado
      */
 
     window.Factory = {
@@ -9,27 +9,62 @@
         modalInstance: null,
 
         // ==========================================
-        // 1. GENERADOR DE TABLAS (ACTUALIZADO)
+        // 1. GENERADOR DE TABLAS (ACTUALIZADO UI & ÍNDICE)
         // ==========================================
         crearTabla: function (id, config) {
-            // Inicialización del estado con soporte para paginación
             this.instances[id] = {
                 data: config.data || [],
                 columns: config.columns || [],
                 idKey: config.idKey || 'ID_UUID',
                 onEdit: config.onEdit || null,
                 config: {
-                    columnasCRUD: config.config?.columnasCRUD !== false, // Default: true
+                    columnasCRUD: config.config?.columnasCRUD !== false,
                     pagination: config.config?.pagination || false,
                     rowSelector: config.config?.rowSelector || false,
-                    rowsPerPage: parseInt(config.config?.rowsPerPage) || 15
+                    rowsPerPage: parseInt(config.config?.rowsPerPage) || 10
                 },
                 state: {
                     currentPage: 1,
-                    rowsPerPage: parseInt(config.config?.rowsPerPage) || 15
+                    rowsPerPage: parseInt(config.config?.rowsPerPage) || 10
                 }
             };
             this._renderTabla(id);
+        },
+
+        _renderLimitSelector: function (id, currentLimit) {
+            return `
+            <div class="d-flex align-items-center gap-2">
+                <span class="small text-muted fw-normal mb-0">Mostrar:</span>
+                <select class="form-select form-select-sm w-auto cursor-pointer py-1 shadow-none border-secondary-subtle" onchange="window.Factory._changeLimit('${id}', this.value)">
+                    <option value="10" ${currentLimit == 10 ? 'selected' : ''}>10</option>
+                    <option value="25" ${currentLimit == 25 ? 'selected' : ''}>25</option>
+                    <option value="50" ${currentLimit == 50 ? 'selected' : ''}>50</option>
+                </select>
+                <span class="small text-muted fw-normal mb-0">filas</span>
+            </div>`;
+        },
+
+        _renderControlesNavegacion: function (id, inst, totalRows, totalPages) {
+            if (!inst.config.pagination) return '';
+
+            return `
+            <div class="d-flex justify-content-end align-items-center p-2 bg-white flex-wrap gap-3">
+                ${this._renderLimitSelector(id, inst.state.rowsPerPage)}
+                <span class="small text-muted mb-0 d-none d-sm-inline">Total: <b>${totalRows}</b></span>
+                <nav>
+                    <ul class="pagination pagination-sm mb-0 shadow-sm">
+                        <li class="page-item ${inst.state.currentPage === 1 ? 'disabled' : ''}">
+                            <a class="page-link" href="#" onclick="event.preventDefault(); window.Factory._changePage('${id}', ${inst.state.currentPage - 1})">«</a>
+                        </li>
+                        <li class="page-item active">
+                            <a class="page-link text-center px-3" href="#" style="pointer-events:none;">Pág. ${inst.state.currentPage} / ${totalPages}</a>
+                        </li>
+                        <li class="page-item ${inst.state.currentPage === totalPages ? 'disabled' : ''}">
+                            <a class="page-link" href="#" onclick="event.preventDefault(); window.Factory._changePage('${id}', ${inst.state.currentPage + 1})">»</a>
+                        </li>
+                    </ul>
+                </nav>
+            </div>`;
         },
 
         _renderTabla: function (id) {
@@ -37,83 +72,61 @@
             const container = document.getElementById(id);
             if (!container) return;
 
-            // Lógica de Paginación
+            // Lógica de Paginación y Offset
             const totalRows = inst.data.length;
             const limit = inst.state.rowsPerPage;
             const totalPages = Math.ceil(totalRows / limit) || 1;
             const start = (inst.state.currentPage - 1) * limit;
             const pagedRows = inst.data.slice(start, start + limit);
 
+            // Colspan dinámico sumando +1 por la nueva columna "N°"
+            const spanCols = (inst.config.columnasCRUD ? inst.columns.length + 1 : inst.columns.length) + 1;
+
+            const htmlControles = this._renderControlesNavegacion(id, inst, totalRows, totalPages);
+
             let html = `
             <div class="factory-container border bg-white rounded shadow-sm overflow-hidden">
+                ${inst.config.pagination ? `<div class="border-bottom">${htmlControles}</div>` : ''}
+                
                 <div class="table-responsive">
                     <table class="table table-hover align-middle mb-0">
                         <thead class="table-dark small text-uppercase">
                             <tr>
-                                ${inst.columns.map(c => `<th class="px-3">${c.label}</th>`).join('')}
-                                ${inst.config.columnasCRUD ? '<th class="text-end px-4">Acciones</th>' : ''}
+                                <th class=\"px-3 py-2 fw-semibold\" style=\"width: 60px;\">N°</th>
+                                ${inst.columns.map(c => `<th class="px-3 py-2 fw-semibold">${c.label}</th>`).join('')}
+                                ${inst.config.columnasCRUD ? '<th class="text-end px-4 py-2 fw-semibold">Acciones</th>' : ''}
                             </tr>
                         </thead>
                         <tbody class="small">
-                            ${this._renderRows(id, inst, pagedRows)}
+                            ${this._renderRows(id, inst, pagedRows, spanCols, start)}
                         </tbody>
                     </table>
                 </div>
-                ${this._renderFooter(id, inst, totalRows, totalPages)}
+
+                ${inst.config.pagination ? `<div class="border-top">${htmlControles}</div>` : ''}
             </div>`;
 
             container.innerHTML = html;
         },
 
-        _renderRows: function (id, inst, rows) {
+        _renderRows: function (id, inst, rows, spanCols, start) {
             if (!rows || rows.length === 0) {
-                const span = inst.config.columnasCRUD ? inst.columns.length + 1 : inst.columns.length;
-                return `<tr><td colspan="${span}" class="text-center py-4 text-muted fw-bold">No hay registros disponibles.</td></tr>`;
+                return `<tr><td colspan="${spanCols}" class="text-center py-4 text-muted fw-bold">No hay registros disponibles.</td></tr>`;
             }
 
-            return rows.map(r => `
+            // Inyección del índice dinámico: (offset inicial) + (índice del bucle) + 1
+            return rows.map((r, index) => `
             <tr>
+                <td class="px-3 text-muted fw-bold bg-light border-end" style="width: 60px;">${start + index + 1}</td>
                 ${inst.columns.map(c => `<td class="px-3">${c.render ? c.render(r[c.key], r) : (r[c.key] || '-')}</td>`).join('')}
                 ${inst.config.columnasCRUD ? `
                     <td class="text-end px-4">
                         <button class="btn btn-sm btn-light border rounded-pill shadow-sm"
-                            onclick="Factory._bridge('v-proveedores-contenedor-principal', '92580000-7')">
+                            onclick="window.Factory._bridge('${id}', '${r[inst.idKey]}')">
                             <i class="bi bi-pencil-fill text-primary"></i> Editar
                         </button>
                     </td>` : ''}
             </tr>`).join('');
-        },
-
-        _renderFooter: function (id, inst, totalRows, totalPages) {
-            if (!inst.config.pagination && !inst.config.rowSelector) return '';
-
-            return `
-            <div class="d-flex justify-content-between align-items-center bg-light p-2 border-top">
-                <div class="d-flex align-items-center gap-2">
-                    ${inst.config.rowSelector ? `
-                        <select class="form-select form-select-sm w-auto" onchange="Factory._changeLimit('${id}', this.value)">
-                            <option value="15" ${inst.state.rowsPerPage == 15 ? 'selected' : ''}>15 filas</option>
-                            <option value="50" ${inst.state.rowsPerPage == 50 ? 'selected' : ''}>50 filas</option>
-                            <option value="100" ${inst.state.rowsPerPage == 100 ? 'selected' : ''}>100 filas</option>
-                        </select>
-                    ` : ''}
-                    <span class="extra-small text-muted">Total: <b>${totalRows}</b></span>
-                </div>
-                
-                ${inst.config.pagination ? `
-                    <nav>
-                        <ul class="pagination pagination-sm mb-0">
-                            <li class="page-item ${inst.state.currentPage === 1 ? 'disabled' : ''}">
-                                <a class="page-link" href="#" onclick="event.preventDefault(); Factory._changePage('${id}', ${inst.state.currentPage - 1})">«</a>
-                            </li>
-                            <li class="page-item active"><a class="page-link" href="#">${inst.state.currentPage} / ${totalPages}</a></li>
-                            <li class="page-item ${inst.state.currentPage === totalPages ? 'disabled' : ''}">
-                                <a class="page-link" href="#" onclick="event.preventDefault(); Factory._changePage('${id}', ${inst.state.currentPage + 1})">»</a>
-                            </li>
-                        </ul>
-                    </nav>
-                ` : ''}
-            </div>`;
         },
 
         // ==========================================
@@ -138,8 +151,7 @@
                         <h6 class="modal-title fw-bold text-uppercase small text-primary">${titulo}</h6>
                         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                     </div>
-                    <div id="factory-modal-body" class="modal-body p-4
-                     overflow-auto" style="max-height: 85vh;"></div>
+                    <div id="factory-modal-body" class="modal-body p-4 overflow-auto" style="max-height: 85vh;"></div>
                 </div>
             </div>`;
 
@@ -164,12 +176,12 @@
 
             container.innerHTML = `
             <div class="p-4 bg-body-tertiary">
-                <form id="f-${id}" onsubmit="event.preventDefault(); Factory._submitForm('${id}')">
+                <form id="f-${id}" onsubmit="event.preventDefault(); window.Factory._submitForm('${id}')">
                     <div class="row g-3">
                         ${fields.map(f => this._renderField(f, data)).join('')}
                     </div>
                     <div class="d-flex justify-content-end gap-2 mt-4 pt-3 border-top">
-                        <button type="button" class="btn btn-secondary rounded-pill px-4" onclick="Factory.cerrarModal()">Cancelar</button>
+                        <button type="button" class="btn btn-secondary rounded-pill px-4" onclick="window.Factory.cerrarModal()">Cancelar</button>
                         <button type="submit" class="btn btn-primary rounded-pill px-4 shadow-sm" id="btn-submit-${id}">
                             <i class="bi bi-save me-1"></i> Guardar
                         </button>
@@ -264,5 +276,5 @@
             }
         }
     };
-    console.log("✅ [MOTOR] Lib_Factory v5.0.0 Activo.");
+    console.log("✅ [MOTOR] Lib_Factory v5.3.0 Activo (Índice Dinámico).");
 </script>
