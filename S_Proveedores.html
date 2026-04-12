@@ -1,12 +1,12 @@
 <script>
     /**
      * @file S_Proveedores.html
-     * @version 1.11.0
-     * @description Maestro de Proveedores. Ciclo CRUD completo con mapeo URS-28 y delegación a Lib_Factory.
+     * @version 1.13.0
+     * @description Maestro de Proveedores. Trazabilidad URS-28, CRUD Híbrido (DOM Nativo + Factory) y Control PERFIL_JSON.
      */
 
     window.Ctrl_Proveedores = {
-        meta: { id: 'proveedores', version: '1.11.0', titulo: 'Maestro de Proveedores' },
+        meta: { id: 'proveedores', version: '1.13.0', titulo: 'Maestro de Proveedores' },
         estado: { filtroBusqueda: '', filtroISO: '', filtroSys: 'ACTIVO', limiteFilas: 15, listenerActivo: false },
 
         init: function () {
@@ -34,7 +34,7 @@
             const raw = window.SISTEMA_ERP.datos[window.CONFIG.DB.PROVEEDORES];
             if (!raw || !Array.isArray(raw)) return;
 
-            // 🚀 PRE-CÁLCULO DE ÚLTIMAS COMPRAS
+            // PRE-CÁLCULO DE ÚLTIMAS COMPRAS
             const compras = window.SISTEMA_ERP.datos[window.CONFIG.DB.COMPRAS] || [];
             const ultimasCompras = {};
             compras.forEach(c => {
@@ -68,12 +68,11 @@
                 window.Factory.crearTabla('v-proveedores-contenedor-principal', {
                     data: dataFiltrada,
                     idKey: 'RUT_ENTIDAD',
-                    // 🚀 DELEGACIÓN NATIVA A LIB_FACTORY PARA EL BOTÓN EDITAR
                     onEdit: (rut) => window.Ctrl_Proveedores.abrirModalCRUD(rut),
                     config: {
                         rowsPerPage: this.estado.limiteFilas,
                         pagination: true,
-                        columnasCRUD: true // Habilita la columna nativa de Factory
+                        columnasCRUD: true
                     },
                     columns: [
                         {
@@ -127,23 +126,19 @@
 
             const rutLimpio = rut.replace(/\./g, '').trim().toUpperCase();
 
-            // Extracción de Compras del Proveedor
             const compras = (db[cnf.COMPRAS] || []).filter(c =>
                 String(c.RUT_EMISOR).replace(/\./g, '').trim().toUpperCase() === rutLimpio
             );
             const uuidsCompras = compras.map(c => c.ID_UUID);
 
-            // Cruce exacto con CUENTAS_POR_PAGAR mediante ID_FACTURA
             const cxpList = (db[cnf.CXP] || []).filter(cxp =>
                 String(cxp.RUT_PROVEEDOR || '').replace(/\./g, '').trim().toUpperCase() === rutLimpio ||
                 uuidsCompras.includes(cxp.ID_FACTURA)
             );
             const deudaTotal = cxpList.reduce((acc, cur) => acc + (String(cur.ESTADO_PAGO) !== 'PAGADO' ? Number(cur.MONTO_DEUDA || 0) : 0), 0);
 
-            // CÁLCULO DE RENDIMIENTO HISTÓRICO COMERCIAL (MONTO TOTAL)
             const volumenTotalHist = compras.reduce((acc, c) => acc + Number(c.MONTO_TOTAL || 0), 0);
 
-            // MOTOR VECTORIAL TIME-SERIES (Últimos 12 Meses en RAM)
             const hoy = new Date();
             const arrMeses = [];
             const mapaVentana = {};
@@ -210,7 +205,6 @@
                 </div>
             `;
 
-            // CRUCE DE INOCUIDAD CON MAESTRO DE ÍTEMS (ISO 22000)
             const catalogoItems = (db[cnf.ITEMS] || []).filter(i =>
                 String(i.RUT_PROV_PREFERENTE || '').replace(/\./g, '').trim().toUpperCase() === rutLimpio
             );
@@ -438,8 +432,6 @@
             window.ERP_Utils.abrirModalDinamico(`<i class="bi bi-box-seam me-2"></i>Folio #${dte.FOLIO} | Desglose Analítico`, htmlBody, 'modal-lg');
         },
 
-        // --- CRUD Y VALIDACIONES ---
-
         validarRutM11: function (rut) {
             if (!rut) return false;
             let valor = rut.replace(/\./g, '').replace('-', '');
@@ -472,9 +464,9 @@
             }
         },
 
+        // 🚀 ROLLBACK UI: RESTAURACIÓN DE LA CUADRÍCULA BOOTSTRAP (MANTENIENDO PERFIL_JSON)
         abrirModalCRUD: function (rutEditar = null) {
-            // 🚀 ESTRUCTURA HOMOLOGADA INCLUYENDO CONDICION_PAGO Y OBSERVACIONES
-            let p = { RUT_ENTIDAD: '', RAZON_SOCIAL: '', GIRO: '', DIRECCION: '', EMAIL: '', TELEFONO: '', ISO_RIESGO: 'EVALUACION', CONDICION_PAGO: '', OBSERVACIONES: '' };
+            let p = { RUT_ENTIDAD: '', RAZON_SOCIAL: '', GIRO: '', DIRECCION: '', EMAIL: '', TELEFONO: '', ISO_RIESGO: 'EVALUACION', CONDICION_PAGO: '', OBSERVACIONES: '', PERFIL_JSON: '' };
             let esEdicion = false;
 
             if (rutEditar) {
@@ -482,11 +474,22 @@
                 if (existe) { p = { ...existe }; esEdicion = true; }
             }
 
+            // 1. DATA BINDING SEGURO
+            let perfilObj = { proveedor_items: false };
+            if (p.PERFIL_JSON && typeof p.PERFIL_JSON === 'string' && p.PERFIL_JSON.trim() !== '') {
+                try {
+                    perfilObj = JSON.parse(p.PERFIL_JSON);
+                } catch (e) {
+                    console.warn("[Seguridad] PERFIL_JSON corrupto o nulo. Se asume estado neutro.");
+                }
+            }
+
             const bodyId = window.Factory.abrirModal({
                 titulo: esEdicion ? `<i class="bi bi-pencil-square me-2"></i>Editar Proveedor` : `<i class="bi bi-building-add me-2"></i>Alta de Proveedor`,
                 tamaño: 'modal-lg'
             });
 
+            // 2. INYECCIÓN HTML DIRECTA (Recuperando el Grid UX y añadiendo el Switch UI)
             document.getElementById(bodyId).innerHTML = `
             <form id="form-prov-crud" class="p-4" onsubmit="event.preventDefault(); window.Ctrl_Proveedores.guardarProveedor(${esEdicion});">
                 <div class="row g-3">
@@ -522,6 +525,14 @@
                         <label class="form-label small fw-bold">Condición de Pago</label>
                         <input type="text" id="prov_condicion_pago" class="form-control" value="${p.CONDICION_PAGO || ''}" placeholder="Ej: Contado, 30 Días, etc.">
                     </div>
+                    
+                    <div class="col-md-6 d-flex align-items-end pb-1">
+                        <div class="form-check form-switch fs-6 mb-1">
+                            <input class="form-check-input" type="checkbox" role="switch" id="prov_items_switch" ${perfilObj.proveedor_items ? 'checked' : ''}>
+                            <label class="form-check-label small fw-bold text-secondary" for="prov_items_switch">Habilitar como Proveedor de Ítems / M.P.</label>
+                        </div>
+                    </div>
+
                     <div class="col-md-12">
                         <label class="form-label small fw-bold">Observaciones Preventivas</label>
                         <textarea id="prov_observaciones" class="form-control" rows="2" placeholder="Información relevante de control...">${p.OBSERVACIONES || ''}</textarea>
@@ -534,6 +545,7 @@
             </form>`;
         },
 
+        // 🚀 RECUPERACIÓN DE LECTURA DOM PARA GUARDADO Y SERIALIZACIÓN JSON
         guardarProveedor: function (esEdicion) {
             const rutInput = document.getElementById('prov_rut');
             if (!esEdicion && !this.validarRutM11(rutInput.value)) return window.ERP_Utils.mostrarToast("RUT Inválido. Operación abortada.", "danger");
@@ -542,7 +554,7 @@
             btn.disabled = true;
             btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Registrando...';
 
-            // 🚀 PAYLOAD HOMOLOGADO COMPLETO (INCLUYE PAGO Y OBS)
+            // Lectura de campos del DOM
             const payload = {
                 RUT_ENTIDAD: rutInput.value.trim(),
                 RAZON_SOCIAL: document.getElementById('prov_nombre').value.trim().toUpperCase(),
@@ -554,6 +566,11 @@
                 OBSERVACIONES: document.getElementById('prov_observaciones').value.trim(),
                 STATUS: 'ACTIVO'
             };
+
+            // 3. INTERCEPTOR JSON (Lectura de switch y serialización)
+            const isProvItems = document.getElementById('prov_items_switch').checked;
+            const perfilCompilado = { proveedor_items: isProvItems };
+            payload.PERFIL_JSON = JSON.stringify(perfilCompilado);
 
             const idRegistro = esEdicion ? payload.RUT_ENTIDAD : 'NUEVO';
             const ipCliente = window.SISTEMA_ERP.ipCliente || '0.0.0.0';
