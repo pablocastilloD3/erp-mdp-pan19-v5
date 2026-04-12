@@ -1,16 +1,19 @@
 <script>
     /**
      * @file S_Items.html
-     * @description Controlador del Módulo Items.
-     * @version 1.3.2
-     * @arquitectura Memory-First, Vista Dual, Motor Nutricional, Filtro JSON.
-     * @compliance URS-28, ISO 22000.
-     * @reparacion [1.3.2] Cabecera de acordeón continua. Cruce avanzado con LIBRO_COMPRAS->DETALLE_JSON.
+     * @version 1.3.9
+     * @project ERP MDP PAN19 - Sistema de Gestión Industrial
+     * @author Murphy - Arquitecto PMDC
+     * @compliance ISO 22000 / SII Chile / URS-28
+     * @description Controlador del Maestro de Items.
+     * @reparacion [1.3.9] Sincronización de KPIs con datos filtrados en UI. Limpieza visual de etiquetas de riesgo.
+     * @lastUpdate 2026-04-11
      */
 
     window.Ctrl_Items = {
         meta: {
             id: 'items',
+            version: '1.3.9',
             titulo: 'Maestro de Items',
             icono: 'bi-box-seam',
             tematica: 'Inventario',
@@ -56,13 +59,13 @@
         _esProveedorDeItems: function (proveedorObj) {
             if (!proveedorObj) return false;
             if (proveedorObj.STATUS !== 'ACTIVO') return false;
+            if (!proveedorObj.PERFIL_JSON) return false;
 
             try {
-                if (!proveedorObj.PERFIL_JSON) return true;
                 const perfil = JSON.parse(proveedorObj.PERFIL_JSON);
-                return perfil.proveedor_items !== false;
+                return perfil.proveedor_items === true;
             } catch (e) {
-                return true;
+                return false;
             }
         },
 
@@ -90,7 +93,8 @@
             }
 
             if (riesgoDetectado) {
-                return `<span class="badge bg-warning text-dark border border-danger"><i class="bi bi-exclamation-triangle"></i> RIESGO: ${trazabilidadRiesgo}</span>`;
+                // 🛡️ CORRECCIÓN VISUAL: Se eliminó el texto "RIESGO: "
+                return `<span class="badge bg-warning text-dark border border-danger"><i class="bi bi-exclamation-triangle"></i> ${trazabilidadRiesgo}</span>`;
             }
 
             return '<span class="badge bg-success opacity-75">LIBRE</span>';
@@ -105,29 +109,21 @@
             }, {});
         },
 
-        /**
-         * 🕒 INTERCEPTOR DE COMPRAS (Relación LIBRO_COMPRAS -> DETALLE_JSON)
-         * Extrae la FECHA_EMISION más reciente validando el "codigo" del producto.
-         */
         _obtenerUltimaCompraProveedor: function (rutProveedor, itemsDelProveedor) {
             if (rutProveedor === "SIN_PROVEEDOR") return "N/D";
 
             let ultimaFecha = "Sin registros";
 
             if (window.SISTEMA_ERP.datos.LIBRO_COMPRAS) {
-                // 1. Extraer SKUs y Nombres para validación cruzada rápida
                 const skus = itemsDelProveedor.map(i => String(i.SKU_INTERNO).trim());
                 const nombres = itemsDelProveedor.map(i => String(i.NOMBRE_TECNICO).trim().toUpperCase());
 
-                // 2. Filtrar facturas del proveedor
                 const facturas = window.SISTEMA_ERP.datos.LIBRO_COMPRAS.filter(f =>
                     f.RUT_PROVEEDOR === rutProveedor || f.RUT_EMISOR === rutProveedor
                 );
 
-                // 3. Ordenar cronológicamente (más recientes primero)
                 facturas.sort((a, b) => new Date(b.FECHA_EMISION) - new Date(a.FECHA_EMISION));
 
-                // 4. Buscar la primera factura que contenga nuestros ítems en su DETALLE_JSON
                 for (const factura of facturas) {
                     if (factura.DETALLE_JSON) {
                         try {
@@ -138,17 +134,15 @@
                             );
 
                             if (tieneItem) {
-                                // Formatear fecha a DD/MM/YYYY si es válida
                                 const fechaObj = new Date(factura.FECHA_EMISION);
                                 if (!isNaN(fechaObj)) {
                                     ultimaFecha = fechaObj.toLocaleDateString('es-CL', { timeZone: 'UTC' });
                                 } else {
-                                    ultimaFecha = factura.FECHA_EMISION; // Fallback string
+                                    ultimaFecha = factura.FECHA_EMISION;
                                 }
-                                break; // Rompe el ciclo por eficiencia (ya estaba ordenado desc)
+                                break;
                             }
                         } catch (e) {
-                            // Fallback estricto si el JSON falla (búsqueda de subcadena en texto plano)
                             const textoPlano = String(factura.DETALLE_JSON).toUpperCase();
                             const tieneItemFuerte = skus.some(sku => textoPlano.includes(`"CODIGO":"${sku}"`)) ||
                                 nombres.some(nom => textoPlano.includes(`"NOMBRE":"${nom}"`));
@@ -165,23 +159,134 @@
             return ultimaFecha;
         },
 
+        _renderTelemetria: function (contenedor, datos) {
+            let alergenos = 0;
+            let sinNutricional = 0;
+            let sinVidaUtil = 0;
+            let huerfanos = 0;
+
+            datos.forEach(item => {
+                const insigniaAlergeno = this._detectarRiesgoAlergenico(item.NOMBRE_TECNICO, item.ISO_ALERGENOS);
+                // Valida algoritmos y declaraciones manuales
+                if (item.ISO_ALERGENOS === 'SI' || insigniaAlergeno.includes('exclamation-triangle')) alergenos++;
+
+                if (!item.FICHA_TECNICA_JSON || item.FICHA_TECNICA_JSON === '{}' || item.FICHA_TECNICA_JSON === 'null') sinNutricional++;
+                if (!item.ISO_VIDA_UTIL_DIAS || parseInt(item.ISO_VIDA_UTIL_DIAS) <= 0) sinVidaUtil++;
+                if (!item.RUT_PROV_PREFERENTE || item.RUT_PROV_PREFERENTE === 'SIN_PROVEEDOR') huerfanos++;
+            });
+
+            const total = datos.length;
+            const pctAlergenos = total > 0 ? ((alergenos / total) * 100).toFixed(1) : 0;
+
+            const html = `
+            <div class="row g-3 mb-4 animate__animated animate__fadeInDown">
+                <div class="col-12 col-sm-6 col-xl-3">
+                    <div class="card bg-white border-0 shadow-sm border-start border-4 border-danger h-100">
+                        <div class="card-body p-3">
+                            <div class="d-flex align-items-center justify-content-between">
+                                <div>
+                                    <h6 class="text-muted text-uppercase fw-bold mb-1" style="font-size:0.75rem;">Riesgo Alergénico ISO</h6>
+                                    <h4 class="mb-0 text-dark fw-bold">${alergenos} <span class="text-muted fw-normal" style="font-size:0.85rem;">SKUs (${pctAlergenos}%)</span></h4>
+                                </div>
+                                <div class="bg-danger bg-opacity-10 rounded p-2">
+                                    <i class="bi bi-exclamation-triangle-fill text-danger fs-4"></i>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-12 col-sm-6 col-xl-3">
+                    <div class="card bg-white border-0 shadow-sm border-start border-4 border-warning h-100">
+                        <div class="card-body p-3">
+                            <div class="d-flex align-items-center justify-content-between">
+                                <div>
+                                    <h6 class="text-muted text-uppercase fw-bold mb-1" style="font-size:0.75rem;">Sin Ficha Nutricional</h6>
+                                    <h4 class="mb-0 text-dark fw-bold">${sinNutricional} <span class="text-muted fw-normal" style="font-size:0.85rem;">SKUs Ciegos</span></h4>
+                                </div>
+                                <div class="bg-warning bg-opacity-10 rounded p-2">
+                                    <i class="bi bi-clipboard-x-fill text-warning fs-4"></i>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-12 col-sm-6 col-xl-3">
+                    <div class="card bg-white border-0 shadow-sm border-start border-4 ${sinVidaUtil > 0 ? 'border-primary' : 'border-success'} h-100">
+                        <div class="card-body p-3">
+                            <div class="d-flex align-items-center justify-content-between">
+                                <div>
+                                    <h6 class="text-muted text-uppercase fw-bold mb-1" style="font-size:0.75rem;">Sin Vida Útil (FEFO)</h6>
+                                    <h4 class="mb-0 text-dark fw-bold">${sinVidaUtil} <span class="text-muted fw-normal" style="font-size:0.85rem;">SKUs Incompletos</span></h4>
+                                </div>
+                                <div class="bg-${sinVidaUtil > 0 ? 'primary' : 'success'} bg-opacity-10 rounded p-2">
+                                    <i class="bi bi-calendar-x text-${sinVidaUtil > 0 ? 'primary' : 'success'} fs-4"></i>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-12 col-sm-6 col-xl-3">
+                    <div class="card bg-white border-0 shadow-sm border-start border-4 ${huerfanos > 0 ? 'border-secondary' : 'border-success'} h-100">
+                        <div class="card-body p-3">
+                            <div class="d-flex align-items-center justify-content-between">
+                                <div>
+                                    <h6 class="text-muted text-uppercase fw-bold mb-1" style="font-size:0.75rem;">Ítems Huérfanos</h6>
+                                    <h4 class="mb-0 text-dark fw-bold">${huerfanos} <span class="text-muted fw-normal" style="font-size:0.85rem;">Sin Proveedor</span></h4>
+                                </div>
+                                <div class="bg-${huerfanos > 0 ? 'secondary' : 'success'} bg-opacity-10 rounded p-2">
+                                    <i class="bi bi-diagram-3 text-${huerfanos > 0 ? 'secondary' : 'success'} fs-4"></i>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>`;
+
+            contenedor.innerHTML = html;
+        },
+
+        // 🛡️ CORRECCIÓN: Filtrado Algorítmico Centralizado
         construirTabla: function () {
             const datos = window.SISTEMA_ERP.datos.MAESTRO_ITEMS || [];
             const datosActivos = datos.filter(item => item.STATUS === this.estado.filtroActual);
             const contenedorPrincipal = document.getElementById('v-items-tabla');
 
             if (!contenedorPrincipal) return;
-
             contenedorPrincipal.innerHTML = '';
 
+            // 1. Extraer proveedores válidos (Lista Blanca)
+            let opcionesProveedoresValidos = [];
+            if (window.SISTEMA_ERP.datos.MAESTRO_PROVEEDORES) {
+                opcionesProveedoresValidos = window.SISTEMA_ERP.datos.MAESTRO_PROVEEDORES
+                    .filter(p => this._esProveedorDeItems(p));
+            }
+            const rutValidos = opcionesProveedoresValidos.map(p => p.RUT_ENTIDAD);
+
+            // 2. Filtrar base estricta (Solo proveedores válidos y huérfanos)
+            let datosRigurosos = datosActivos.filter(item =>
+                (item.RUT_PROV_PREFERENTE === "SIN_PROVEEDOR" || !item.RUT_PROV_PREFERENTE) ||
+                rutValidos.includes(item.RUT_PROV_PREFERENTE)
+            );
+
+            // 3. Aplicar filtro dinámico de la UI (Dropdown de Vista Tarjetas)
+            let datosParaVista = datosRigurosos;
+            if (this.estado.filtroProveedor !== 'TODOS') {
+                datosParaVista = datosRigurosos.filter(item => (item.RUT_PROV_PREFERENTE || "SIN_PROVEEDOR") === this.estado.filtroProveedor);
+            }
+
+            // 4. Inyectar Telemetría (AHORA CÁLCULO SOBRE DATOS PARSEADOS EN PANTALLA)
+            const contenedorTelemetria = document.createElement('div');
+            this._renderTelemetria(contenedorTelemetria, datosParaVista);
+            contenedorPrincipal.appendChild(contenedorTelemetria);
+
+            // 5. Renderizar Componentes de Lista o Tarjetas
+            const contenedorVista = document.createElement('div');
+            contenedorPrincipal.appendChild(contenedorVista);
+
             if (this.estado.vistaActiva === 'tarjetas') {
-                let datosTarjetas = datosActivos;
-                if (this.estado.filtroProveedor !== 'TODOS') {
-                    datosTarjetas = datosActivos.filter(item => (item.RUT_PROV_PREFERENTE || "SIN_PROVEEDOR") === this.estado.filtroProveedor);
-                }
-                this._construirTarjetas(datosTarjetas, contenedorPrincipal, datosActivos);
+                this._construirTarjetas(datosParaVista, contenedorVista, opcionesProveedoresValidos);
             } else {
-                this._construirListaAcordeon(datosActivos, contenedorPrincipal);
+                this._construirListaAcordeon(datosParaVista, contenedorVista);
             }
         },
 
@@ -197,6 +302,7 @@
                 document.head.appendChild(style);
             }
 
+            // Los datosFiltrados ya fueron purgados en construirTabla, no se requiere doble chequeo.
             const agrupadoPorRut = this._agruparPorProveedor(datosFiltrados);
             contenedor.innerHTML = '<div class="accordion" id="accordion-proveedores-items"></div>';
             const contenedorAcordeon = document.getElementById('accordion-proveedores-items');
@@ -204,25 +310,22 @@
             let indice = 0;
 
             for (const [rut, itemsDelProveedor] of Object.entries(agrupadoPorRut)) {
-                indice++;
-                const isFirst = (indice === 1);
-
                 let razonSocial = "Proveedor No Asignado";
+
                 if (rut !== "SIN_PROVEEDOR" && window.SISTEMA_ERP.datos.MAESTRO_PROVEEDORES) {
                     const provMatch = window.SISTEMA_ERP.datos.MAESTRO_PROVEEDORES.find(p => p.RUT_ENTIDAD === rut);
                     if (provMatch) razonSocial = provMatch.RAZON_SOCIAL;
                 }
 
-                // 🛠️ Ejecución de telemetría de compras enviando array de SKUs para validación cruzada
+                indice++;
                 const ultimaCompra = this._obtenerUltimaCompraProveedor(rut, itemsDelProveedor);
                 const idCollapse = `collapse-prov-${indice}`;
                 const idTabla = `tabla-dinamica-prov-${indice}`;
 
-                // 🛠️ Modificación UI: Texto continuo con truncamiento protector
                 contenedorAcordeon.innerHTML += `
                     <div class="accordion-item border-0 mb-3 shadow-sm rounded overflow-hidden">
                         <h2 class="accordion-header">
-                            <button class="accordion-button ${isFirst ? '' : 'collapsed'} bg-light border-bottom" type="button" data-bs-toggle="collapse" data-bs-target="#${idCollapse}">
+                            <button class="accordion-button collapsed bg-light border-bottom" type="button" data-bs-toggle="collapse" data-bs-target="#${idCollapse}">
                                 <div class="text-truncate text-dark w-100" style="font-size: 0.95rem;">
                                     <i class="bi bi-truck me-2 text-primary"></i>
                                     <span class="fw-bold text-uppercase">${razonSocial}</span>
@@ -230,7 +333,7 @@
                                 </div>
                             </button>
                         </h2>
-                        <div id="${idCollapse}" class="accordion-collapse collapse ${isFirst ? 'show' : ''}" data-bs-parent="#accordion-proveedores-items">
+                        <div id="${idCollapse}" class="accordion-collapse collapse" data-bs-parent="#accordion-proveedores-items">
                             <div class="accordion-body p-0">
                                 <div id="${idTabla}" class="w-100"></div>
                             </div>
@@ -260,15 +363,13 @@
                     });
                 }, 0);
             }
+
+            if (indice === 0) {
+                contenedor.innerHTML = '<div class="alert alert-warning text-center mt-3"><i class="bi bi-info-circle me-2"></i>No hay ítems registrados asociados a proveedores de catálogo válidos.</div>';
+            }
         },
 
-        _construirTarjetas: function (datosFiltrados, contenedor, datosGlobalesActivos) {
-            let opcionesProveedoresValidos = [];
-            if (window.SISTEMA_ERP.datos.MAESTRO_PROVEEDORES) {
-                opcionesProveedoresValidos = window.SISTEMA_ERP.datos.MAESTRO_PROVEEDORES
-                    .filter(p => this._esProveedorDeItems(p));
-            }
-
+        _construirTarjetas: function (datosRigurosos, contenedor, opcionesProveedoresValidos) {
             let optionsHtml = `<option value="TODOS" ${this.estado.filtroProveedor === 'TODOS' ? 'selected' : ''}>Todos los Catálogos</option>`;
 
             opcionesProveedoresValidos.forEach(p => {
@@ -278,7 +379,7 @@
             let htmlContenido = `
             <div class="row mb-3 align-items-center bg-light p-2 rounded mx-0 shadow-sm border border-secondary-subtle">
                 <div class="col-md-6 mb-2 mb-md-0">
-                    <span class="badge bg-primary px-3 py-2"><i class="bi bi-box-seam me-1"></i> ${datosFiltrados.length} Registros Visibles</span>
+                    <span class="badge bg-primary px-3 py-2"><i class="bi bi-box-seam me-1"></i> ${datosRigurosos.length} Registros Visibles</span>
                 </div>
                 <div class="col-md-6 d-flex justify-content-end">
                     <div class="input-group input-group-sm w-auto shadow-sm">
@@ -290,11 +391,11 @@
                 </div>
             </div>`;
 
-            if (datosFiltrados.length === 0) {
-                htmlContenido += '<div class="alert alert-warning text-center border-warning"><i class="bi bi-info-circle me-2"></i>No hay ítems disponibles.</div>';
+            if (datosRigurosos.length === 0) {
+                htmlContenido += '<div class="alert alert-warning text-center border-warning"><i class="bi bi-info-circle me-2"></i>No hay ítems disponibles para catálogos válidos.</div>';
             } else {
                 htmlContenido += '<div class="row g-3">';
-                datosFiltrados.forEach(item => {
+                datosRigurosos.forEach(item => {
                     let razonSocial = "Proveedor Desconocido";
                     if (item.RUT_PROV_PREFERENTE && window.SISTEMA_ERP.datos.MAESTRO_PROVEEDORES) {
                         const provMatch = window.SISTEMA_ERP.datos.MAESTRO_PROVEEDORES.find(p => p.RUT_ENTIDAD === item.RUT_PROV_PREFERENTE);
@@ -466,25 +567,36 @@
             });
 
             payload.FICHA_TECNICA_JSON = JSON.stringify(datosNutricionales);
-            const usuarioActual = window.SISTEMA_ERP.usuarioLogueado?.email || window.SISTEMA_ERP.identidad?.email || "SYSTEM";
+
+            const esEdicion = window.SISTEMA_ERP.datos.MAESTRO_ITEMS.some(i => String(i.SKU_INTERNO).trim() === String(payload.SKU_INTERNO).trim());
+            const idRegistro = esEdicion ? payload.SKU_INTERNO : 'NUEVO';
+            const ipCliente = window.SISTEMA_ERP.ipCliente || "0.0.0.0";
 
             google.script.run
-                .withSuccessHandler((resString) => {
-                    const res = JSON.parse(resString);
-                    if (res.success) {
-                        window.Ctrl_Items.ejecutarRecargaSilenciosa(res.data);
-                        window.Factory.cerrarModal();
-                        console.log("✅ [Módulo Items] Mutación confirmada forensemente.");
-                    } else {
-                        alert("Error de integridad: " + res.message);
+                .withSuccessHandler((res) => {
+                    let respuesta = res;
+                    try { if (typeof res === 'string') respuesta = JSON.parse(res); } catch (e) { }
+
+                    if (respuesta.error) {
+                        alert("Error de integridad: " + respuesta.message);
                         if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-save me-1"></i> Guardar'; }
+                        return;
+                    }
+
+                    console.log("✅ [Módulo Items] Mutación confirmada mediante Motor Universal V6.");
+                    window.Factory.cerrarModal();
+
+                    if (window.ERP_Utils && typeof window.ERP_Utils.recargaSilenciosa === 'function') {
+                        window.ERP_Utils.recargaSilenciosa();
+                    } else {
+                        window.Ctrl_Items.ejecutarRecargaSilenciosa(payload);
                     }
                 })
                 .withFailureHandler((err) => {
                     alert("Falla de comunicación con el núcleo V8.");
                     if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-save me-1"></i> Guardar'; }
                 })
-                .w_items_guardarItem(payload, usuarioActual);
+                .w_EjecutarTransaccionSegura('ITEMS', idRegistro, payload, ipCliente);
         },
 
         ejecutarRecargaSilenciosa: function (itemActualizado) {
