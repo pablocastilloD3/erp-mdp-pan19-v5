@@ -6,12 +6,12 @@
 	],
 	"settings": {
 		"files.exclude": {
-			"**/.git": true,
-			"**/.svn": true,
-			"**/.hg": true,
-			"V5.code-workspace": true,
-			"PROMPT.md": true,
-			"**/.*": true
+			"**/.git": false,
+			"**/.svn": false,
+			"**/.hg": false,
+			"V5.code-workspace": false,
+			"PROMPT.md": false,
+			"**/.*": false
 		},
 		"showHideExcludedConfig.ignoreExcludes": [
 			"**/.DS_Store",

@@ -1,0 +1,230 @@
+<script>
+    /**
+     * @file Scripts_Main.html
+     * @description Núcleo SPA Consolidado v5.1.5 (URS-28 / ISO 22000).
+     * @reparacion [V5.1.5] Sincronización en vivo de Telemetría (Rol Visual) durante Hot-Reload.
+     */
+
+    window.SISTEMA_ERP = window.SISTEMA_ERP || {
+        modulos: {},
+        datos: {},
+        estadoSesion: 'INICIANDO',
+        moduloActual: 'home',
+        temaVisual: 'light',
+        bootComplete: false
+    };
+
+    // ============================================================================
+    // 1. ESCUCHA DE EVENTOS DE SISTEMA (Aterrizaje Único)
+    // ============================================================================
+    window.addEventListener('erp-auth-success', (e) => {
+        console.log("🔓 [NÚCLEO] Sesión validada. Evaluando matriz de aterrizaje...");
+        window.SISTEMA_ERP.estadoSesion = 'ACTIVA';
+
+        if (!window.Ctrl_Enrutamiento) window.Ctrl_Enrutamiento = {};
+        const permisos = e.detail.permisos || [];
+        window.Ctrl_Enrutamiento.permisosCacheados = permisos;
+
+        if (typeof navegarA === 'function') {
+            if (permisos.includes('*') || permisos.includes('home')) {
+                navegarA('home');
+            } else {
+                const primerModulo = Object.keys(window.SISTEMA_ERP.modulos).find(key =>
+                    key !== 'enrutamiento' && key !== 'sesion' && permisos.includes(key)
+                );
+                if (primerModulo) {
+                    navegarA(primerModulo);
+                } else {
+                    console.error("🚨 [NÚCLEO] Usuario sin accesos operativos.");
+                    if (window.Ctrl_Sesion) window.Ctrl_Sesion.ejecutarCierre('SIN_PRIVILEGIOS_BASE');
+                }
+            }
+        }
+    }, { once: false });
+
+    // ============================================================================
+    // 2. CENTINELA ZERO-TRUST (Kill-Switch y Hot-Reload Resucitado)
+    // ============================================================================
+    window.addEventListener('erp-datos-listos', () => {
+        if (window.SISTEMA_ERP.estadoSesion !== 'ACTIVA') return;
+
+        const email = window.SISTEMA_ERP.identidad?.email || window.SISTEMA_ERP.usuarioActual;
+        if (!email) return;
+
+        const usuarios = window.SISTEMA_ERP.datos['MAESTRO_USUARIOS'];
+        const roles = window.SISTEMA_ERP.datos['MAESTRO_ROLES'];
+        if (!usuarios || !roles || usuarios.length === 0) return;
+
+        const userRow = usuarios.find(u => String(u.EMAIL || '').toLowerCase() === String(email).toLowerCase());
+
+        if (!userRow || String(userRow.STATUS).toUpperCase() !== 'ACTIVO') {
+            console.error(`🚨 [ZERO TRUST] Cuenta inactiva o eliminada en caliente: ${email}`);
+            if (window.Ctrl_Sesion) window.Ctrl_Sesion.ejecutarCierre('CUENTA_DESACTIVADA');
+            return;
+        }
+
+        const idRol = String(userRow.NIVEL_ACCESO);
+        let nuevosPermisos = [];
+        let nuevoNombreRol = 'Desconocido'; // 🚀 FIX V5.1.5: Capturador de nombre de rol
+
+        if (idRol === "1") {
+            nuevosPermisos = ["*"];
+            nuevoNombreRol = "SUPER"; // 🚀 FIX V5.1.5: Asignación explícita visual
+        } else {
+            const rolRow = roles.find(r => String(r.ID_ROL) === idRol && String(r.STATUS).toUpperCase() === 'ACTIVO');
+            if (rolRow) {
+                try { nuevosPermisos = JSON.parse(rolRow.PERMISOS_JSON || '[]'); } catch (e) { }
+                nuevoNombreRol = rolRow.NOMBRE_ROL || `Nivel ${idRol}`; // 🚀 FIX V5.1.5: Captura visual
+            }
+        }
+
+        // 🚀 FIX V5.1.5: Sincronización Visual en Tiempo Real
+        if (window.SISTEMA_ERP.identidad) {
+            if (window.SISTEMA_ERP.identidad.rol !== nuevoNombreRol) {
+                console.log(`🔄 [NÚCLEO] Cambio visual de rol detectado: ${window.SISTEMA_ERP.identidad.rol} -> ${nuevoNombreRol}`);
+                window.SISTEMA_ERP.identidad.rol = nuevoNombreRol;
+                if (window.Ctrl_Sesion && typeof window.Ctrl_Sesion.actualizarTelemetriaUI === 'function') {
+                    window.Ctrl_Sesion.actualizarTelemetriaUI();
+                }
+            }
+        }
+
+        // Evaluación lógica de Enrutamiento y Permisos
+        if (window.Ctrl_Enrutamiento) {
+            const strViejos = JSON.stringify(window.Ctrl_Enrutamiento.permisosCacheados || []);
+            const strNuevos = JSON.stringify(nuevosPermisos);
+
+            if (strViejos !== strNuevos) {
+                console.warn("🔄 [NÚCLEO] Actualización de matriz RBAC detectada en caliente.");
+                window.Ctrl_Enrutamiento.permisosCacheados = nuevosPermisos;
+                window.Ctrl_Enrutamiento.construirMenuGenerativo(nuevosPermisos);
+
+                const modActual = window.SISTEMA_ERP.moduloActual;
+                if (!nuevosPermisos.includes('*') && !nuevosPermisos.includes(modActual)) {
+                    console.warn(`🚨 [ZERO TRUST] Permiso revocado en caliente para módulo: ${modActual}`);
+                    if (window.ERP_Utils?.mostrarToast) window.ERP_Utils.mostrarToast("Acceso revocado por el administrador.", "danger");
+
+                    if (nuevosPermisos.includes('home')) {
+                        navegarA('home');
+                    } else {
+                        const escapeMod = Object.keys(window.SISTEMA_ERP.modulos).find(key =>
+                            key !== 'enrutamiento' && key !== 'sesion' && nuevosPermisos.includes(key)
+                        );
+                        if (escapeMod) navegarA(escapeMod);
+                        else window.Ctrl_Sesion.ejecutarCierre('PRIVILEGIOS_REVOCADOS');
+                    }
+                }
+            }
+        }
+    });
+
+    // ============================================================================
+    // 3. BOOTSTRAPPER UNIFICADO
+    // ============================================================================
+    window.addEventListener('load', () => {
+        if (sessionStorage.getItem('boot_crash_loop')) {
+            document.body.innerHTML = `<div class="d-flex flex-column justify-content-center align-items-center vh-100 bg-dark text-white text-center">
+            <i class="bi bi-exclamation-octagon text-danger display-1 mb-3"></i>
+            <h2>SISTEMA DETENIDO POR CRASH LOOP</h2>
+            <button class="btn btn-outline-light mt-4" onclick="sessionStorage.removeItem('boot_crash_loop'); location.reload()">Reintentar</button>
+        </div>`;
+            return;
+        }
+
+        sessionStorage.setItem('boot_crash_loop', 'true');
+        setTimeout(() => sessionStorage.removeItem('boot_crash_loop'), 3000);
+
+        if (window.SISTEMA_ERP.bootComplete) return;
+        window.SISTEMA_ERP.bootComplete = true;
+
+        ejecutarADC();
+        if (window.Ctrl_Sesion) window.Ctrl_Sesion.iniciarAutenticacion();
+    });
+
+    function ejecutarADC() {
+        const prefijo = 'Ctrl_';
+        let detectados = 0;
+        Object.keys(window).forEach(variableName => {
+            if (variableName.startsWith(prefijo) && typeof window[variableName] === 'object' && window[variableName] !== null) {
+                const controlador = window[variableName];
+                let moduloId = (controlador.meta && controlador.meta.id) ? controlador.meta.id.toLowerCase() : variableName.replace(prefijo, '').toLowerCase();
+                if (!window.SISTEMA_ERP.modulos[moduloId]) {
+                    window.SISTEMA_ERP.modulos[moduloId] = controlador;
+                    detectados++;
+                }
+            }
+        });
+    }
+
+    // ============================================================================
+    // 4. ENRUTADOR ZERO TRUST
+    // ============================================================================
+    window.navegarA = function (idModulo, event) {
+        if (event) event.preventDefault();
+        if (window.SISTEMA_ERP.estadoSesion !== 'ACTIVA') return;
+
+        const id = String(idModulo).toLowerCase();
+        const mod = window.SISTEMA_ERP.modulos[id];
+
+        const permisosRaw = (window.Ctrl_Enrutamiento && window.Ctrl_Enrutamiento.permisosCacheados)
+            ? window.Ctrl_Enrutamiento.permisosCacheados : [];
+        const permisos = permisosRaw.map(p => String(p).toLowerCase());
+
+        const accesoConcedido = permisos.includes('*') || permisos.includes(id);
+
+        if (!accesoConcedido) {
+            if (id === 'home' && window.SISTEMA_ERP.moduloActual !== 'home' && window.SISTEMA_ERP.moduloActual !== 'INICIANDO') {
+                console.warn(`[ZERO TRUST] Petición fantasma a 'home' neutralizada.`);
+                return;
+            }
+
+            console.warn(`[ZERO TRUST] Denegado: [${id.toUpperCase()}]`);
+            if (window.ERP_Utils?.mostrarToast) {
+                window.ERP_Utils.mostrarToast("Privilegios insuficientes.", "danger");
+            }
+            return;
+        }
+
+        window.SISTEMA_ERP.moduloActual = id;
+
+        document.querySelectorAll('.spa-view').forEach(vista => {
+            vista.classList.add('d-none');
+            vista.classList.remove('active');
+        });
+
+        const targetView = document.getElementById(`view-${id}`);
+        if (targetView) {
+            targetView.classList.remove('d-none');
+            targetView.classList.add('active');
+        }
+
+        document.querySelectorAll('#spa-nav-menu .nav-link').forEach(link => {
+            link.classList.remove('active', 'fw-bold', 'bg-primary', 'text-white');
+            link.classList.add('text-muted');
+            if (link.getAttribute('onclick')?.includes(`'${id}'`)) {
+                link.classList.add('active', 'fw-bold', 'bg-primary', 'text-white');
+                link.classList.remove('text-muted');
+            }
+        });
+
+        if (mod) {
+            if (typeof mod.init === 'function') mod.init();
+            if (typeof mod.render === 'function') mod.render();
+        }
+    };
+
+    window.ERP_Main = window.ERP_Main || {};
+    window.ERP_Main.toggleTema = function () {
+        const html = document.documentElement;
+        const icon = document.getElementById('icon-theme');
+        const temaActual = html.getAttribute('data-bs-theme');
+        const nuevoTema = temaActual === 'light' ? 'dark' : 'light';
+        html.setAttribute('data-bs-theme', nuevoTema);
+        window.SISTEMA_ERP.temaVisual = nuevoTema;
+        if (icon) icon.className = nuevoTema === 'dark' ? 'bi bi-brightness-high-fill text-warning' : 'bi bi-moon-stars-fill text-info';
+    };
+    window.ERP_Main.toggleSidebar = function () {
+        const sidebar = document.getElementById('sys-sidebar');
+        if (sidebar) sidebar.classList.toggle('phantom-collapsed');
+    };
+</script>

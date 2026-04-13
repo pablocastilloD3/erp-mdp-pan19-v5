@@ -1,0 +1,347 @@
+<script>
+  /**
+   * @file S_Seguridad.html
+   * @description Controlador Lógico de Seguridad — Gestión de Usuarios y Roles.
+   * @version 5.1.0
+   * @arquitectura URS-28 / Memory-First
+   * @reparacion [V5.1.0] Limpieza de Telemetría. Delegación a S_Sesion (Single Responsibility Principle).
+   */
+
+  window.Ctrl_Seguridad = {
+
+    meta: {
+      id: 'seguridad',
+      version: '5.1.0',
+      titulo: 'Usuarios y Roles',
+      icono: 'bi-shield-lock',
+      tematica: 'Configuración',
+      seguridad: { permisos: ['seguridad'], nivel_acceso: 1 }
+    },
+
+    estado: {
+      usuarioActual: null, // Se lee desde la billetera global para evitar auto-bloqueo
+      pestanaActual: 'usuarios'
+    },
+
+    init: function () {
+      // 🚀 FIX V5.1.0: Leer identidad directamente de la billetera global
+      window.addEventListener('erp-datos-listos', () => {
+        this.estado.usuarioActual = window.SISTEMA_ERP.identidad?.email || null;
+        if (window.SISTEMA_ERP.moduloActual === this.meta.id) this.render();
+      });
+
+      if (window.SISTEMA_ERP.datos && window.SISTEMA_ERP.datos['MAESTRO_USUARIOS']) {
+        this.estado.usuarioActual = window.SISTEMA_ERP.identidad?.email || null;
+        if (window.SISTEMA_ERP.moduloActual === this.meta.id) this.render();
+      }
+    },
+
+    // ========================================================================
+    // NAVEGACIÓN DE PESTAÑAS Y RENDERIZADO
+    // ========================================================================
+
+    cambiarPestana: function (pestana) {
+      this.estado.pestanaActual = pestana;
+
+      document.querySelectorAll('#securityTabs .nav-link').forEach(function (n) {
+        n.classList.remove('active', 'border-primary', 'border-bottom', 'border-3', 'fw-bold');
+      });
+      var tab = document.getElementById('tab-' + pestana);
+      if (tab) tab.classList.add('active', 'border-primary', 'border-bottom', 'border-3', 'fw-bold');
+
+      var btnAccion = document.getElementById('botones-accion-seguridad');
+      if (btnAccion) {
+        btnAccion.innerHTML = pestana === 'usuarios'
+          ? '<button class="btn btn-primary rounded-pill shadow-sm fw-bold px-4" onclick="Ctrl_Seguridad.editarUsuario(\'NUEVO\')"><i class="bi bi-person-plus-fill me-2"></i>Nueva Identidad</button>'
+          : '<button class="btn btn-secondary rounded-pill shadow-sm fw-bold px-4" onclick="Ctrl_Seguridad.editarRol(\'NUEVO\')"><i class="bi bi-shield-lock-fill me-2"></i>Nuevo Perfil</button>';
+      }
+      this.render();
+    },
+
+    render: function () {
+      var contenedor = document.getElementById('contenedor-tabla-seguridad');
+      if (!contenedor) return;
+      this.estado.pestanaActual === 'usuarios' ? this.renderUsuarios() : this.renderRoles();
+    },
+
+    // ========================================================================
+    // GESTIÓN DE USUARIOS
+    // ========================================================================
+
+    renderUsuarios: function () {
+      var datos = window.SISTEMA_ERP.datos['MAESTRO_USUARIOS'] || [];
+      var roles = window.SISTEMA_ERP.datos['MAESTRO_ROLES'] || [];
+
+      Factory.crearTabla('contenedor-tabla-seguridad', {
+        data: datos,
+        idKey: 'ID_UUID',
+        columns: [
+          {
+            label: 'Identidad',
+            key: 'NOMBRES',
+            render: function (val, row) {
+              return '<div class="d-flex align-items-center">'
+                + '<div class="bg-primary-subtle text-primary fw-bold text-center" style="width:32px;height:32px;border-radius:50%;line-height:32px;font-size:0.8rem;">'
+                + (val || 'U').charAt(0)
+                + '</div><div class="ms-2"><div class="fw-bold">' + (val || 'Sin Nombre') + '</div>'
+                + '<div class="text-muted small" style="font-size:0.7rem">' + row.EMAIL + '</div></div></div>';
+            }
+          },
+          {
+            label: 'Perfil',
+            key: 'NIVEL_ACCESO',
+            render: function (val) {
+              var r = roles.find(function (rol) { return String(rol.ID_ROL) === String(val); });
+              return '<span class="badge bg-dark-subtle text-dark border">' + (r ? r.NOMBRE_ROL : 'Nivel ' + val) + '</span>';
+            }
+          },
+          {
+            label: 'Estado',
+            key: 'STATUS',
+            render: function (val) {
+              var color = val === 'ACTIVO' ? 'bg-success'
+                : val === 'PENDIENTE' ? 'bg-warning text-dark'
+                  : 'bg-danger';
+              return '<span class="badge ' + color + ' rounded-pill px-3">' + val + '</span>';
+            }
+          }
+        ],
+        onEdit: (uuid) => this.editarUsuario(uuid)
+      });
+    },
+
+    editarUsuario: function (uuid) {
+      var esNuevo = uuid === 'NUEVO';
+      var user = esNuevo
+        ? { ID_UUID: 'NUEVO', NOMBRES: '', EMAIL: '', NIVEL_ACCESO: '', STATUS: 'PENDIENTE' }
+        : (window.SISTEMA_ERP.datos['MAESTRO_USUARIOS'] || []).find(function (u) { return u.ID_UUID === uuid; });
+
+      if (!user) {
+        console.error('[Seguridad] Usuario con UUID "' + uuid + '" no encontrado en RAM.');
+        window.ERP_Utils?.mostrarToast("Error: usuario no encontrado.", "danger");
+        return;
+      }
+
+      var rolesOpts = (window.SISTEMA_ERP.datos['MAESTRO_ROLES'] || [])
+        .filter(function (r) { return r.STATUS === 'ACTIVO'; })
+        .map(function (r) { return { id: r.ID_ROL, label: r.NOMBRE_ROL }; });
+
+      var modalBodyId = Factory.abrirModal({
+        titulo: esNuevo ? 'Registrar Nueva Identidad' : 'Configurar Acceso',
+        tamaño: 'modal-md'
+      });
+
+      Factory.crearFormulario(modalBodyId, {
+        data: user,
+        fields: [
+          { name: 'ID_UUID', type: 'hidden' },
+          { name: 'NOMBRES', label: 'Nombre Completo', type: 'text', required: true, col: 12 },
+          { name: 'EMAIL', label: 'Email Institucional', type: 'email', required: true, readonly: !esNuevo, col: 12 },
+          { name: 'NIVEL_ACCESO', label: 'Perfil Asignado', type: 'select', options: rolesOpts, required: true, col: 6 },
+          {
+            name: 'STATUS', label: 'Estado de Cuenta', type: 'select', col: 6,
+            required: true,
+            // Bloqueo para no desactivarse a sí mismo
+            readonly: (user.EMAIL === this.estado.usuarioActual),
+            options: [
+              { id: 'ACTIVO', label: 'ACTIVO' },
+              { id: 'PENDIENTE', label: 'PENDIENTE' },
+              { id: 'INACTIVO', label: 'INACTIVO' }
+            ]
+          }
+        ],
+        onSubmit: (payload) => this.procesarGuardadoUsuario(payload)
+      });
+    },
+
+    procesarGuardadoUsuario: function (payload) {
+      window.ERP_Utils?.mostrarLoading(true);
+
+      var idRegistro = payload.ID_UUID;
+
+      google.script.run
+        .withSuccessHandler(function (resStr) {
+          window.ERP_Utils?.mostrarLoading(false);
+          var res = window.ERP_Utils.procesarRespuestaZeroTrust(resStr);
+          if (!res) return;
+
+          if (res.error) {
+            window.ERP_Utils?.mostrarToast(res.message || "Error en transacción.", "danger");
+            return;
+          }
+
+          window.ERP_Utils.recargaSilenciosa(function () {
+            Factory.cerrarModal();
+            window.ERP_Utils.mostrarToast("Identidad procesada con éxito.", "success");
+          });
+        })
+        .withFailureHandler(function (err) {
+          window.ERP_Utils?.mostrarLoading(false);
+          window.ERP_Utils?.mostrarToast("Fallo crítico de red.", "danger");
+        })
+        .w_EjecutarTransaccionSegura(
+          'USUARIOS',
+          idRegistro,
+          payload,
+          window.SISTEMA_ERP.ipCliente || "0.0.0.0"
+        );
+    },
+
+    // ========================================================================
+    // GESTIÓN DE ROLES
+    // ========================================================================
+
+    renderRoles: function () {
+      var roles = window.SISTEMA_ERP.datos['MAESTRO_ROLES'] || [];
+      var usuarios = window.SISTEMA_ERP.datos['MAESTRO_USUARIOS'] || [];
+
+      Factory.crearTabla('contenedor-tabla-seguridad', {
+        data: roles,
+        idKey: 'ID_ROL',
+        columns: [
+          {
+            label: 'Rol',
+            key: 'NOMBRE_ROL',
+            render: function (val) { return '<span class="fw-bold text-primary">' + val + '</span>'; }
+          },
+          {
+            label: 'Permisos',
+            key: 'PERMISOS_JSON',
+            render: function (val) {
+              var list = JSON.parse(val || '[]');
+              return list.includes('*')
+                ? '<span class="badge bg-danger">ROOT (*)</span>'
+                : '<span class="badge bg-light text-dark border">' + list.length + ' Módulos</span>';
+            }
+          },
+          {
+            label: 'Usuarios',
+            key: 'ID_ROL',
+            render: function (val) {
+              var count = usuarios.filter(function (u) {
+                return String(u.NIVEL_ACCESO) === String(val) && u.STATUS === 'ACTIVO';
+              }).length;
+              return '<span class="badge bg-secondary rounded-pill px-3">' + count + ' activos</span>';
+            }
+          }
+        ],
+        onEdit: (id) => this.editarRol(id)
+      });
+    },
+
+    editarRol: function (idRol) {
+      var esNuevo = idRol === 'NUEVO';
+      var roles = window.SISTEMA_ERP.datos['MAESTRO_ROLES'] || [];
+      var rol = esNuevo
+        ? {
+          ID_ROL: Math.max(0, ...roles.map(function (r) { return r.ID_ROL; })) + 1,
+          NOMBRE_ROL: '',
+          STATUS: 'ACTIVO',
+          PERMISOS_JSON: '[]'
+        }
+        : roles.find(function (r) { return String(r.ID_ROL) === String(idRol); });
+
+      if (!rol) {
+        console.error('[Seguridad] Rol con ID "' + idRol + '" no encontrado en RAM.');
+        window.ERP_Utils?.mostrarToast("Error: rol no encontrado.", "danger");
+        return;
+      }
+
+      var misPermisos = JSON.parse(rol.PERMISOS_JSON || '[]');
+      var todosModulos = window.SISTEMA_ERP.modulos || {};
+
+      var modulosOpts = Object.keys(todosModulos)
+        .filter(function (k) { return k !== 'enrutamiento' && k !== 'home' && k !== 'sesion'; })
+        .map(function (k) {
+          return {
+            id: k,
+            label: todosModulos[k].meta?.titulo || k.toUpperCase(),
+            checked: misPermisos.includes('*') || misPermisos.includes(k),
+            disabled: misPermisos.includes('*')
+          };
+        });
+
+      var modalBodyId = Factory.abrirModal({
+        titulo: esNuevo ? 'Crear Nuevo Perfil' : ('Editar Perfil #' + idRol),
+        tamaño: 'modal-lg'
+      });
+
+      Factory.crearFormulario(modalBodyId, {
+        data: { ...rol, SUPER_ADMIN: misPermisos.includes('*') },
+        fields: [
+          { name: 'ID_ROL', type: 'hidden' },
+          { name: 'NOMBRE_ROL', label: 'Nombre del Perfil', type: 'text', required: true, col: 8 },
+          {
+            name: 'STATUS', label: 'Estado', type: 'select', required: true, col: 4,
+            options: [{ id: 'ACTIVO', label: 'ACTIVO' }, { id: 'INACTIVO', label: 'INACTIVO' }]
+          },
+          {
+            name: 'SUPER_ADMIN',
+            label: '',
+            labelCheckbox: 'Privilegios de Super Administrador (*)',
+            type: 'checkbox',
+            value: '*',
+            onChange: 'Ctrl_Seguridad._toggleSuperAdmin(this)'
+          },
+          { name: 'permisos', label: 'Módulos Autorizados', type: 'switch-group', options: modulosOpts }
+        ],
+        onSubmit: (payload) => this.procesarGuardadoRol(payload)
+      });
+    },
+
+    procesarGuardadoRol: function (payload) {
+      var objFinal = {
+        ID_ROL: payload.ID_ROL,
+        NOMBRE_ROL: payload.NOMBRE_ROL,
+        STATUS: payload.STATUS,
+        PERMISOS_JSON: JSON.stringify(payload.SUPER_ADMIN === '*' ? ["*"] : (payload.permisos || ['home']))
+      };
+
+      if (payload.SUPER_ADMIN !== '*') {
+        var permisos = payload.permisos || [];
+        if (!permisos.includes('home') && !permisos.includes('*')) {
+          permisos.push('home');
+        }
+        objFinal.PERMISOS_JSON = JSON.stringify(permisos);
+      }
+
+      window.ERP_Utils?.mostrarLoading(true);
+
+      google.script.run
+        .withSuccessHandler(function (resStr) {
+          window.ERP_Utils?.mostrarLoading(false);
+          var res = window.ERP_Utils.procesarRespuestaZeroTrust(resStr);
+          if (!res) return;
+
+          if (res.error) {
+            window.ERP_Utils?.mostrarToast(res.message || "Error al guardar el perfil.", "danger");
+            return;
+          }
+
+          window.ERP_Utils.recargaSilenciosa(function () {
+            Factory.cerrarModal();
+            window.ERP_Utils.mostrarToast("Perfil de seguridad actualizado.", "success");
+          });
+        })
+        .withFailureHandler(function (err) {
+          window.ERP_Utils?.mostrarLoading(false);
+          console.error("❌ [Seguridad] Fallo de red en guardado de rol:", err);
+          window.ERP_Utils?.mostrarToast("Fallo de conexión al guardar el perfil.", "danger");
+        })
+        .w_EjecutarTransaccionSegura(
+          'ROLES',
+          objFinal.ID_ROL,
+          objFinal,
+          window.SISTEMA_ERP.ipCliente || "0.0.0.0"
+        );
+    },
+
+    _toggleSuperAdmin: function (chk) {
+      var isSuper = chk.checked;
+      document.querySelectorAll('input[name="permisos[]"]').forEach(function (c) {
+        c.checked = isSuper;
+        c.disabled = isSuper;
+      });
+    }
+  };
+</script>
