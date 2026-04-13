@@ -1,0 +1,81 @@
+<div id="view-auditoria" class="spa-view d-none">
+
+    <div class="row mb-4 pt-3 animate__animated animate__fadeIn">
+        <div class="col-12 d-flex justify-content-between align-items-center">
+            <div>
+                <h2 class="fw-bold mb-0 text-dark">
+                    <i id="v-auditoria-icono" class="bi bi-shield-lock-fill me-2 text-primary"></i>
+                    <span id="v-auditoria-titulo" class="text-uppercase">Auditoría Forense</span>
+                </h2>
+                <p class="text-muted small mb-0" id="v-auditoria-descripcion">
+                    Trazabilidad Inmutable e Historias de Sesión (ISO 22000).
+                </p>
+            </div>
+            <div id="v-auditoria-acciones-header" class="d-flex gap-2">
+                <button class="btn btn-success btn-sm rounded-pill px-4 fw-bold shadow-sm"
+                    onclick="window.Ctrl_Auditoria.verificarIntegridad()">
+                    <i class="bi bi-shield-check me-1"></i> Verificar Cadena
+                </button>
+                <button class="btn btn-light btn-sm border rounded-pill px-3 shadow-sm"
+                    onclick="window.ERP_Utils.recargaSilenciosa()">
+                    <i class="bi bi-arrow-repeat me-1"></i> Sincronizar
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div class="card border-0 shadow-sm mb-4 animate__animated animate__fadeIn">
+        <div class="card-body bg-light rounded shadow-sm py-3">
+            <div class="row g-3">
+                <div class="col-md-3">
+                    <label class="extra-small fw-bold text-muted text-uppercase">Operador</label>
+                    <select id="filter-audit-user" class="form-select form-select-sm shadow-none"
+                        onchange="window.Ctrl_Auditoria.setFiltro('filtroUser', this.value)">
+                        <option value="">TODOS LOS USUARIOS</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="extra-small fw-bold text-muted text-uppercase">Acción</label>
+                    <select id="filter-audit-action" class="form-select form-select-sm shadow-none"
+                        onchange="window.Ctrl_Auditoria.setFiltro('filtroAccion', this.value)">
+                        <option value="">TODAS LAS ACCIONES</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="extra-small fw-bold text-muted text-uppercase">Rango Temporal</label>
+                    <select id="filter-audit-time" class="form-select form-select-sm shadow-none"
+                        onchange="window.Ctrl_Auditoria.setFiltro('filtroTiempo', this.value)">
+                        <option value="today">HOY</option>
+                        <option value="7">ÚLTIMOS 7 DÍAS</option>
+                        <option value="30" selected>ÚLTIMOS 30 DÍAS</option>
+                        <option value="all">HISTORIAL COMPLETO</option>
+                    </select>
+                </div>
+                <div class="col-md-3 d-flex align-items-end">
+                    <div
+                        class="form-check form-switch w-100 bg-danger bg-opacity-10 border border-danger border-opacity-25 rounded px-3 py-2 d-flex align-items-center shadow-sm">
+                        <input class="form-check-input ms-0 me-2 mt-0" type="checkbox" id="filter-only-rupturas"
+                            onchange="window.Ctrl_Auditoria.setFiltro('soloRupturas', this.checked)">
+                        <label class="form-check-label extra-small fw-bold text-danger pt-1"
+                            for="filter-only-rupturas">AISLAR RUPTURAS (ADC)</label>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="audit-integrity-alert" class="mb-4"></div>
+
+    <div class="row animate__animated animate__fadeInUp">
+        <div class="col-12">
+            <div class="card shadow-sm border-0">
+                <div class="card-body p-0">
+                    <div id="v-auditoria-contenedor-principal" style="min-height: 500px;">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="v-auditoria-modales"></div>
+</div>
