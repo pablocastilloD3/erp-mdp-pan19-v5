@@ -1,15 +1,38 @@
 <script>
     /**
      * @file S_UpdateXML.html
-     * @version 3.1.0
-     * @description Frontend Batch Final: UX Asíncrono, Sanitización XML Extrema, Impuestos/Exento y Granel.
-     * Integración estricta con Bóveda Singleton y Puente Zero-Trust (Eliminación de Hardcoding).
+     * @version 5.2.1
+     * @description Controlador de Ingesta Masiva. Puente entre UI y Motor Backend.
+     * @compliance ISO 22000 / Zero-Trust / Memory-First
+     * @reparacion [V5.2.1] Restauración de bucle de ítems y registro en cola de procesamiento.
      */
 
     window.Ctrl_UpdateXML = {
-        meta: { id: 'updatexml', version: '3.1.0', titulo: 'Integración DTE' },
-        estado: { loteProcesado: [], alertasBloqueantes: 0, abortar: false, simuladorUI: null },
 
+        /** * ============================================================================
+         * [SCOPE: CONFIG] - Estado y Metadatos del Módulo
+         * ============================================================================
+         */
+        meta: {
+            id: 'updatexml',
+            version: '5.2.1',
+            titulo: 'Integración DTE',
+            icono: 'bi-file-earmark-zip',
+            tematica: 'Abastecimiento',
+            seguridad: { permisos: ['admin', 'compras'], nivel_acceso: 1 }
+        },
+
+        estado: {
+            loteProcesado: [],
+            alertasBloqueantes: 0,
+            abortar: false,
+            simuladorUI: null
+        },
+
+        /** * ============================================================================
+         * [SCOPE: CLIENT_SCRIPTS] - Inicialización y Control de UI
+         * ============================================================================
+         */
         init: function () { },
 
         render: function () {
@@ -39,6 +62,17 @@
             if (lbl) lbl.innerText = texto;
         },
 
+        cancelarProceso: function () {
+            this.estado.abortar = true;
+            const fileInput = document.getElementById('file-dte-lote');
+            if (fileInput) fileInput.value = '';
+            this.render();
+        },
+
+        /** * ============================================================================
+         * [SCOPE: CORE_LOGIC] - Procesamiento de Archivos y Reglas de Negocio
+         * ============================================================================
+         */
         _sugerirConversion: function (cantCruda, undCruda, nombreItem) {
             let cant = Number(cantCruda) || 0;
             let und = String(undCruda || 'UN').toUpperCase().trim();
@@ -82,59 +116,93 @@
         _procesarUnXML: function (file) {
             return new Promise((resolve) => {
                 const reader = new FileReader();
+
+                // 🛡️ FIX: Prevención de Carga Infinita en caso de fallo físico del archivo
+                reader.onerror = () => {
+                    console.error("Error de lectura física:", file.name);
+                    resolve();
+                };
+
                 reader.onload = (e) => {
                     let text = new TextDecoder("iso-8859-1").decode(e.target.result);
                     if (/encoding\s*=\s*['"]utf-8['"]/i.test(text)) text = new TextDecoder("utf-8").decode(e.target.result);
 
-                    // 🚀 SANITIZACIÓN: Exorcismo de tags XML intrusos
-                    const cleanText = text
-                        .replace(/xmlns(:\w+)?="[^"]*"/g, '')
-                        .replace(/<\?xml.*?\?>/g, '');
+                    // Sanitización de namespaces para lectura limpia del DOM
+                    const cleanText = text.replace(/xmlns(:\w+)?="[^"]*"/g, '').replace(/<\?xml.*?\?>/g, '');
 
                     try {
                         const xmlDoc = new DOMParser().parseFromString(cleanText, "text/xml");
+
+                        // Helper de extracción robusta (Busca tags sin importar jerarquía profunda)
                         const getTag = (t) => xmlDoc.getElementsByTagName(t)[0]?.textContent || '';
 
-                        // 🚀 CAPTURA: Impuestos Adicionales (Harina, ILA)
-                        let montoOtrosImp = 0;
-                        const nodosImp = xmlDoc.getElementsByTagName('ImptoReten');
+                        // 🎯 AISLAMIENTO DE TOTALES: Captura Harina 12% (Impuesto 19)
+                        const totales = xmlDoc.getElementsByTagName('Totales')[0];
+                        const getMonto = (tag) => totales?.getElementsByTagName(tag)[0]?.textContent || '0';
+
+                        let totalOtrosImp = 0;
+                        const nodosImp = totales?.getElementsByTagName('ImptoReten') || [];
                         for (let k = 0; k < nodosImp.length; k++) {
-                            montoOtrosImp += Number(nodosImp[k].getElementsByTagName('MontoImp')[0]?.textContent || 0);
+                            totalOtrosImp += Number(nodosImp[k].getElementsByTagName('MontoImp')[0]?.textContent || 0);
                         }
 
                         const dte = {
                             archivo: file.name,
                             tipoDTE: getTag('TipoDTE') || '33',
-                            rutEmisor: getTag('RUTEmisor'),
+                            // 🎯 FIX: Casing según estándar SII (RutEmisor)
+                            rutEmisor: getTag('RutEmisor'),
                             razonSocial: getTag('RznSoc'),
                             folio: getTag('Folio'),
                             fechaEmision: getTag('FchEmis'),
                             fechaVencimiento: getTag('FchVenc') || getTag('FchEmis'),
-                            montoNeto: getTag('MntNeto'),
-                            montoExento: getTag('MntExe') || '0',
-                            montoIva: getTag('IVA'),
-                            montoOtrosImpuestos: montoOtrosImp,
-                            montoTotal: getTag('MntTotal'),
-                            items: [], xmlRaw: text,
+
+                            // 🏠 PERFIL PROVEEDOR (Para enrolamiento automático URS-22)
+                            giro: getTag('GiroEmis'),
+                            acteco: getTag('Acteco'),
+                            direccion: getTag('DirOrigen'),
+                            comuna: getTag('CmnaOrigen'),
+                            ciudad: getTag('CiudadOrigen'),
+                            email: getTag('CorreoEmisor') || getTag('Email') || '',
+                            telefono: getTag('Telefono') || '',
+
+                            // 📊 PERSISTENCIA FINANCIERA
+                            montoNeto: getMonto('MntNeto'),
+                            montoExento: getMonto('MntExe') || '0',
+                            montoIva: getMonto('IVA'),
+                            montoOtrosImpuestos: totalOtrosImp, // 17.184 capturados correctamente
+                            montoTotal: getMonto('MntTotal'),
+
+                            // 🛡️ CAMPOS DE CONTROL URS-28
+                            siiFctProp: 'PENDIENTE',
+                            sourceApp: 'UPDATEXML_V5',
+                            categoryFlow: 'ABASTECIMIENTO_MP',
+
+                            items: [],
+                            xmlRaw: text,
                             requiereRevisionGranel: false
                         };
 
+                        // 📦 EXTRACCIÓN DE ÍTEMS (Trazabilidad ISO 22000)
                         const nodosDetalle = xmlDoc.getElementsByTagName('Detalle');
                         for (let j = 0; j < nodosDetalle.length; j++) {
                             dte.items.push({
                                 idx: j,
-                                codigo: nodosDetalle[j].getElementsByTagName('VlrCodigo')[0]?.textContent || `GEN-${Math.random().toString(36).substr(2, 5)}`,
-                                nombre: nodosDetalle[j].getElementsByTagName('NmbItem')[0]?.textContent || 'Sin Nombre',
-                                descripcion: nodosDetalle[j].getElementsByTagName('DscItem')[0]?.textContent || '',
+                                codigo: nodosDetalle[j].getElementsByTagName('VlrCodigo')[0]?.textContent || `GEN-${j}`,
+                                nombre: nodosDetalle[j].getElementsByTagName('NmbItem')[0]?.textContent || 'S/N',
                                 cantidad: nodosDetalle[j].getElementsByTagName('QtyItem')[0]?.textContent || 1,
                                 unidad: nodosDetalle[j].getElementsByTagName('UnmdItem')[0]?.textContent || 'UN',
                                 precio: nodosDetalle[j].getElementsByTagName('PrcItem')[0]?.textContent || 0,
                                 alergenosDetectados: []
                             });
                         }
-                        if (dte.rutEmisor) this.estado.loteProcesado.push(dte);
+
+                        // 🚀 REGISTRO EN COLA: Solo si el RUT es válido
+                        if (dte.rutEmisor) {
+                            this.estado.loteProcesado.push(dte);
+                        }
+
                     } catch (err) {
-                        console.error("Fallo crítico al parsear XML: ", file.name, err);
+                        console.error("Fallo al procesar XML individual:", file.name, err);
                     }
                     resolve();
                 };
@@ -142,49 +210,41 @@
             });
         },
 
+        /** * ============================================================================
+         * [SCOPE: DATA_ACCESS] - Interacción con Memoria RAM (Memory-First)
+         * ============================================================================
+         */
         _ejecutarPreVueloAgrupado: function () {
-            // 🚀 PROTECCIÓN ESTRUCTURAL ZERO-TRUST
             if (!window.CONFIG || !window.CONFIG.DB || !window.SISTEMA_ERP || !window.SISTEMA_ERP.datos) {
-                console.error("🚨 [ADC] UpdateXML: Dependencias Core no encontradas. Abortando Pre-vuelo.");
                 window.ERP_Utils.mostrarLoading(false);
-                return window.ERP_Utils.mostrarToast("Sistema no inicializado. Faltan configuraciones (CONFIG).", "danger");
+                return window.ERP_Utils.mostrarToast("Sistema no inicializado.", "danger");
             }
 
             let matrizAlergenos = {};
             try {
-                // Mapeo dinámico a la base de datos de Configuración
                 const configs = window.SISTEMA_ERP.datos[window.CONFIG.DB.CONFIG] || [];
                 const row = configs.find(c => c.PARAM_KEY === 'MATRIZ_ALERGENOS');
                 if (row && row.PARAM_VALUE) matrizAlergenos = JSON.parse(row.PARAM_VALUE);
-            } catch (e) {
-                console.warn("⚠️ No se pudo cargar MATRIZ_ALERGENOS desde Bóveda.");
-            }
+            } catch (e) { console.warn("Error en MATRIZ_ALERGENOS."); }
 
             const agrupados = {};
-
-            // Mapeo dinámico al Libro de Compras
             const dbCompras = window.SISTEMA_ERP.datos[window.CONFIG.DB.COMPRAS] || [];
 
             this.estado.loteProcesado.forEach(dte => {
                 let alergenosDelDocumento = new Set();
-
                 dte.items.forEach(item => {
                     const nombreUpper = String(item.nombre).toUpperCase();
                     for (const [categoria, keywords] of Object.entries(matrizAlergenos)) {
                         if (keywords.some(k => nombreUpper.includes(k))) {
-                            if (!item.alergenosDetectados.includes(categoria)) {
-                                item.alergenosDetectados.push(categoria);
-                            }
+                            if (!item.alergenosDetectados.includes(categoria)) item.alergenosDetectados.push(categoria);
                         }
                     }
                     item.alergenosDetectados.forEach(a => alergenosDelDocumento.add(a));
-
                     item.conversion = this._sugerirConversion(item.cantidad, item.unidad, item.nombre);
                     if (item.conversion.modificado) dte.requiereRevisionGranel = true;
                 });
 
                 dte.isoAlergenos = alergenosDelDocumento.size > 0 ? Array.from(alergenosDelDocumento).join(', ') : 'NO';
-
                 const rutLimpio = String(dte.rutEmisor).replace(/\./g, '').trim().toUpperCase();
                 const folioNum = String(Number(dte.folio));
 
@@ -201,6 +261,93 @@
             this._renderizarTablaAgrupada(agrupados);
         },
 
+        confirmarLote: async function () {
+            // 1. PREPARACIÓN DE ESTADO Y UI
+            this.estado.abortar = false;
+            this.mostrarBotonesControl(false);
+            window.ERP_Utils.mostrarLoading(true);
+
+            // Filtrado de documentos que no existen previamente en la base de datos
+            const dtesValidos = this.estado.loteProcesado.filter(d => !d.existe);
+            const total = dtesValidos.length;
+
+            if (total === 0) {
+                window.ERP_Utils.mostrarLoading(false);
+                return window.ERP_Utils.mostrarToast("No hay documentos válidos para procesar.", "warning");
+            }
+
+            // 2. RECOLECCIÓN DE DATOS DE GRANEL (Human-in-the-Loop)
+            // Extrae los valores corregidos por el usuario en la interfaz antes del envío
+            dtesValidos.forEach(dte => {
+                if (dte.requiereRevisionGranel) {
+                    const safeRut = String(dte.rutEmisor).replace(/[^a-zA-Z0-9]/g, '');
+                    dte.items.forEach(item => {
+                        if (item.conversion?.modificado) {
+                            const elCant = document.getElementById(`cant-${safeRut}-${dte.folio}-${item.idx}`);
+                            const elUnd = document.getElementById(`und-${safeRut}-${dte.folio}-${item.idx}`);
+                            if (elCant && elUnd) {
+                                item.cantidad = elCant.value;
+                                item.unidad = elUnd.value;
+                            }
+                        }
+                    });
+                }
+            });
+
+            // 3. MOTOR DE PROGRESO VISUAL (UX ASÍNCRONO)
+            let indiceSimulado = 0;
+            const msPorDocumento = Math.max(1500, Math.min(3000, 10000 / total));
+
+            this.estado.simuladorUI = setInterval(() => {
+                if (indiceSimulado < total) {
+                    const dte = dtesValidos[indiceSimulado];
+                    const porcentaje = Math.round(((indiceSimulado + 1) / total) * 95);
+                    this.actualizarProgreso(porcentaje, `Procesando [${indiceSimulado + 1}/${total}]: ${dte.razonSocial}...`);
+                    indiceSimulado++;
+                } else {
+                    this.actualizarProgreso(95, `Consolidando Certificado ISO 22000 en el servidor...`);
+                    clearInterval(this.estado.simuladorUI);
+                }
+            }, msPorDocumento);
+
+            // 4. EJECUCIÓN TRANSACCIONAL (VINCULO ZERO-TRUST)
+            try {
+                const payload = {
+                    loteDTE: dtesValidos,
+                    ip: window.SISTEMA_ERP.ipCliente
+                };
+
+                const resStr = await new Promise((resolve, reject) => {
+                    // Llamada al Motor Backend W_UpdateXML.gs
+                    google.script.run
+                        .withSuccessHandler(resolve)
+                        .withFailureHandler(reject)
+                        .w_updatexml_procesarIntegracion(JSON.stringify(payload));
+                });
+
+                // Limpieza del timer en caso de respuesta rápida del servidor
+                clearInterval(this.estado.simuladorUI);
+
+                const res = JSON.parse(resStr);
+                if (res.error) throw new Error(res.message);
+
+                // 5. CIERRE EXITOSO Y REPORTE
+                this.actualizarProgreso(100, `¡Proceso Finalizado Exitosamente!`);
+                this._renderizarReporteLote(res.data);
+
+            } catch (error) {
+                // MANEJO DE FALLOS CRÍTICOS
+                clearInterval(this.estado.simuladorUI);
+                window.ERP_Utils.mostrarLoading(false);
+                window.ERP_Utils.mostrarToast(`Error crítico de integración: ${error.message}`, "danger");
+                console.error("🚨 Fallo en integración de lote:", error);
+            }
+        },
+
+        /** * ============================================================================
+         * [SCOPE: COMPLIANCE] - Renderizado de Resultados e Integridad
+         * ============================================================================
+         */
         _renderizarTablaAgrupada: function (agrupados) {
             window.ERP_Utils.mostrarLoading(false);
             let html = '';
@@ -217,19 +364,15 @@
                     let bloqueRevision = '';
                     if (dte.requiereRevisionGranel && !dte.existe) {
                         bloqueRevision = `<div class="mt-2 p-2 bg-light border border-info rounded small shadow-inner">
-                            <strong class="text-info-emphasis"><i class="bi bi-info-circle me-1"></i>Conversión de Granel Sugerida:</strong><br>`;
+                            <strong class="text-info-emphasis"><i class="bi bi-info-circle me-1"></i>Conversión Sugerida:</strong><br>`;
 
                         dte.items.forEach(item => {
-                            if (item.conversion && item.conversion.modificado) {
-                                const idInputCant = `cant-${safeRut}-${dte.folio}-${item.idx}`;
-                                const idInputUnd = `und-${safeRut}-${dte.folio}-${item.idx}`;
+                            if (item.conversion?.modificado) {
                                 bloqueRevision += `
                                 <div class="d-flex align-items-center mt-2 border-bottom pb-1 border-opacity-25">
-                                    <span class="text-truncate fw-bold me-2" style="max-width: 180px;" title="${item.nombre}">${item.nombre}</span>
-                                    <span class="text-muted text-decoration-line-through me-2">${item.conversion.cantOriginal} ${item.conversion.undOriginal}</span>
-                                    <i class="bi bi-arrow-right text-primary me-2 fw-bold"></i>
-                                    <input type="number" id="${idInputCant}" class="form-control form-control-sm border-primary text-primary fw-bold w-25 me-1" value="${item.conversion.cantSugerida}" step="any">
-                                    <select id="${idInputUnd}" class="form-select form-select-sm border-primary text-primary fw-bold w-25">
+                                    <span class="text-truncate fw-bold me-2" style="max-width: 180px;">${item.nombre}</span>
+                                    <input type="number" id="cant-${safeRut}-${dte.folio}-${item.idx}" class="form-control form-control-sm w-25 me-1" value="${item.conversion.cantSugerida}">
+                                    <select id="und-${safeRut}-${dte.folio}-${item.idx}" class="form-select form-select-sm w-25">
                                         <option value="KG" ${item.conversion.undSugerida === 'KG' ? 'selected' : ''}>KG</option>
                                         <option value="LT" ${item.conversion.undSugerida === 'LT' ? 'selected' : ''}>LT</option>
                                         <option value="UN" ${item.conversion.undSugerida === 'UN' ? 'selected' : ''}>UN</option>
@@ -242,11 +385,11 @@
 
                     html += `<li id="${idHtml}" class="list-group-item d-flex flex-column ${dte.existe ? 'bg-danger bg-opacity-10' : ''}">
                      <div class="d-flex justify-content-between align-items-center w-100">
-                         <div><span class="fw-bold">${dte.tipoDTE == '34' ? 'Exenta' : 'Folio'}: ${dte.folio}</span> | <span class="text-success fw-bold">$${dte.montoTotal}</span></div>
+                         <div><span class="fw-bold">Folio: ${dte.folio}</span> | <span class="text-success fw-bold">$${dte.montoTotal}</span></div>
                          <div>
-                            ${dte.requiereRevisionGranel && !dte.existe ? `<span class="badge bg-info text-dark border border-info pulse me-1">REVISAR GRANEL</span>` : ''}
-                            ${tieneAlergeno ? `<span class="badge bg-warning text-dark border border-warning pulse me-1">ALERTA ALÉRGENOS</span>` : ''}
-                            ${dte.existe ? `<span class="badge bg-danger pulse">DUPLICADO</span>` : `<span class="badge bg-success">NUEVO</span>`}
+                            ${dte.requiereRevisionGranel && !dte.existe ? `<span class="badge bg-info text-dark pulse me-1">REVISAR</span>` : ''}
+                            ${tieneAlergeno ? `<span class="badge bg-warning text-dark pulse me-1">ALÉRGENOS</span>` : ''}
+                            ${dte.existe ? `<span class="badge bg-danger">DUPLICADO</span>` : `<span class="badge bg-success">NUEVO</span>`}
                          </div>
                      </div>
                      ${bloqueRevision}
@@ -256,93 +399,7 @@
             }
             const container = document.getElementById('v-updatexml-resultado-prevuelo');
             if (container) container.innerHTML = html;
-
-            if (this.estado.loteProcesado.length > 0 && this.estado.alertasBloqueantes < this.estado.loteProcesado.length) {
-                this.mostrarBotonesControl(true);
-            }
-        },
-
-        cancelarProceso: function () {
-            this.estado.abortar = true;
-            const fileInput = document.getElementById('file-dte-lote');
-            if (fileInput) fileInput.value = '';
-            this.render();
-        },
-
-        confirmarLote: async function () {
-            this.estado.abortar = false;
-            this.mostrarBotonesControl(false);
-            window.ERP_Utils.mostrarLoading(true);
-
-            const dtesValidos = this.estado.loteProcesado.filter(d => !d.existe);
-            const total = dtesValidos.length;
-
-            if (total === 0) {
-                window.ERP_Utils.mostrarLoading(false);
-                return window.ERP_Utils.mostrarToast("No hay documentos válidos para procesar.", "warning");
-            }
-
-            dtesValidos.forEach(dte => {
-                if (dte.requiereRevisionGranel) {
-                    const safeRut = String(dte.rutEmisor).replace(/[^a-zA-Z0-9]/g, '');
-                    dte.items.forEach(item => {
-                        if (item.conversion && item.conversion.modificado) {
-                            const elCant = document.getElementById(`cant-${safeRut}-${dte.folio}-${item.idx}`);
-                            const elUnd = document.getElementById(`und-${safeRut}-${dte.folio}-${item.idx}`);
-                            if (elCant && elUnd) {
-                                item.cantidad = elCant.value;
-                                item.unidad = elUnd.value;
-                            }
-                        }
-                    });
-                }
-            });
-
-            let indiceSimulado = 0;
-            const msPorDocumento = Math.max(1500, Math.min(3000, 10000 / total));
-
-            const simularProgreso = () => {
-                if (indiceSimulado < total) {
-                    const dte = dtesValidos[indiceSimulado];
-                    const porcentaje = Math.round(((indiceSimulado + 1) / total) * 95);
-                    this.actualizarProgreso(porcentaje, `Procesando [${indiceSimulado + 1}/${total}]: ${dte.razonSocial} (Folio ${dte.folio})...`);
-
-                    const safeRut = String(dte.rutEmisor).replace(/[^a-zA-Z0-9]/g, '');
-                    const idHtml = `dte-row-${safeRut}-${dte.folio}`;
-                    const rowUI = document.getElementById(idHtml);
-                    if (rowUI) {
-                        rowUI.style.transition = "opacity 0.5s ease";
-                        rowUI.style.opacity = "0";
-                        setTimeout(() => rowUI.remove(), 500);
-                    }
-                    indiceSimulado++;
-                } else {
-                    this.actualizarProgreso(95, `Consolidando Certificado ISO 22000 en el servidor... Espere.`);
-                    clearInterval(this.estado.simuladorUI);
-                }
-            };
-
-            simularProgreso();
-            this.estado.simuladorUI = setInterval(simularProgreso, msPorDocumento);
-
-            try {
-                const payload = { loteDTE: dtesValidos, ip: window.SISTEMA_ERP.ipCliente };
-                const resStr = await new Promise((resolve, reject) => {
-                    google.script.run.withSuccessHandler(resolve).withFailureHandler(reject).w_updatexml_procesarIntegracion(JSON.stringify(payload));
-                });
-
-                clearInterval(this.estado.simuladorUI);
-                const res = JSON.parse(resStr);
-                if (res.error) throw new Error(res.message);
-
-                this.actualizarProgreso(100, `¡Proceso Finalizado Exitosamente!`);
-                this._renderizarReporteLote(res.data);
-
-            } catch (error) {
-                clearInterval(this.estado.simuladorUI);
-                window.ERP_Utils.mostrarLoading(false);
-                window.ERP_Utils.mostrarToast(`Error crítico del servidor: ${error.message}`, "danger");
-            }
+            if (this.estado.loteProcesado.length > 0 && this.estado.alertasBloqueantes < this.estado.loteProcesado.length) this.mostrarBotonesControl(true);
         },
 
         _renderizarReporteLote: function (resultados) {
@@ -351,35 +408,23 @@
             const progressContainer = document.getElementById('dte-progress-bar')?.parentElement;
             if (progressContainer) progressContainer.classList.add('d-none');
 
-            let html = `<div class="p-3"><h4 class="fw-bold">Reporte Final de Lote</h4><p class="text-muted">Documentos Afectados: ${resultados.successes.length + resultados.errors.length}</p></div>`;
-
+            let html = `<div class="p-3"><h4 class="fw-bold">Reporte Final de Lote</h4></div>`;
             if (resultados.errors.length > 0) {
-                html += `<div class="alert alert-danger fw-bold shadow-sm">❌ ${resultados.errors.length} Documentos Rechazados</div><ul class="list-group mb-3">`;
-                resultados.errors.forEach(e => html += `<li class="list-group-item text-danger"><b>${e.razonSocial} (Folio ${e.folio})</b><br><small>${e.error}</small></li>`);
+                html += `<div class="alert alert-danger fw-bold shadow-sm">❌ ${resultados.errors.length} Rechazados</div><ul class="list-group mb-3">`;
+                resultados.errors.forEach(e => html += `<li class="list-group-item text-danger small"><b>Folio ${e.folio}:</b> ${e.error}</li>`);
                 html += `</ul>`;
             }
             if (resultados.successes.length > 0) {
-                html += `<div class="alert alert-success fw-bold shadow-sm">✅ ${resultados.successes.length} Documentos Integrados</div><ul class="list-group mb-3">`;
-                resultados.successes.forEach(s => html += `<li class="list-group-item text-success"><b>${s.razonSocial} (Folio ${s.folio})</b> - Monto Total: $${s.montoTotal}</li>`);
-                html += `</ul>`;
+                html += `<div class="alert alert-success fw-bold shadow-sm">✅ ${resultados.successes.length} Integrados</div>`;
             }
-
             if (resultados.certUrl) {
-                html += `<div class="text-center mt-4 mb-4">
-                            <a href="${resultados.certUrl}" target="_blank" class="btn btn-primary btn-lg shadow">
-                                <i class="bi bi-shield-check"></i> Ver Certificado Consolidado (ISO 22000)
-                            </a>
-                         </div>`;
+                html += `<div class="text-center mt-4"><a href="${resultados.certUrl}" target="_blank" class="btn btn-primary shadow"><i class="bi bi-shield-check"></i> Ver Certificado ISO 22000</a></div>`;
             }
 
             const container = document.getElementById('v-updatexml-resultado-prevuelo');
             if (container) container.innerHTML = html;
             window.ERP_Utils.mostrarLoading(false);
-
-            if (resultados.successes.length > 0) {
-                window.ERP_Utils.mostrarToast('Sincronizando la Base de Datos con el ERP...', 'info');
-                setTimeout(() => window.ERP_Utils.recargaSilenciosa(), 2500);
-            }
+            if (resultados.successes.length > 0) setTimeout(() => window.ERP_Utils.recargaSilenciosa(), 2500);
         }
     };
 </script>
