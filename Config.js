@@ -8,8 +8,8 @@
 // 1. SECRETS (Infraestructura - Aislao en el Servidor V8)
 // ============================================================================
 var SECRETS = {
-  SPREADSHEET_ID: "1-zTmClZh8s-xraYBdQlY5HJIQvmq_7dVCS0SmEydNMc",
-  FOLDER_XML_BODEGA: "1iCMETUMuqwokGiTKeXPO_Vl_ZTnKhd4Z"
+  SPREADSHEET_ID: "1N1V2Eso9COgxTFFJr4wSGGB_80ZAv7JBDYCmDphgOZI",
+  FOLDER_XML_BODEGA: "13_mCmq08Q4dipncmoQCxIwtBkRjjlzR4"
 };
 
 // ============================================================================

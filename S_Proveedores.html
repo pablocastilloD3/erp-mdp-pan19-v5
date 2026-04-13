@@ -1,12 +1,21 @@
 <script>
     /**
      * @file S_Proveedores.html
+<<<<<<< HEAD
      * @version 1.13.0
      * @description Maestro de Proveedores. Trazabilidad URS-28, CRUD Híbrido (DOM Nativo + Factory) y Control PERFIL_JSON.
      */
 
     window.Ctrl_Proveedores = {
         meta: { id: 'proveedores', version: '1.13.0', titulo: 'Maestro de Proveedores' },
+=======
+     * @version 1.15.0
+     * @description Maestro de Proveedores. Arquitectura Relacional Estricta (Eliminación de CATALOGO_JSON).
+     */
+
+    window.Ctrl_Proveedores = {
+        meta: { id: 'proveedores', version: '1.15.0', titulo: 'Maestro de Proveedores' },
+>>>>>>> 073effaef5cc242ce0f8e30ee02b1699951983de
         estado: { filtroBusqueda: '', filtroISO: '', filtroSys: 'ACTIVO', limiteFilas: 15, listenerActivo: false },
 
         init: function () {
@@ -126,6 +135,10 @@
 
             const rutLimpio = rut.replace(/\./g, '').trim().toUpperCase();
 
+<<<<<<< HEAD
+=======
+            // Extracción Financiera
+>>>>>>> 073effaef5cc242ce0f8e30ee02b1699951983de
             const compras = (db[cnf.COMPRAS] || []).filter(c =>
                 String(c.RUT_EMISOR).replace(/\./g, '').trim().toUpperCase() === rutLimpio
             );
@@ -136,9 +149,15 @@
                 uuidsCompras.includes(cxp.ID_FACTURA)
             );
             const deudaTotal = cxpList.reduce((acc, cur) => acc + (String(cur.ESTADO_PAGO) !== 'PAGADO' ? Number(cur.MONTO_DEUDA || 0) : 0), 0);
+<<<<<<< HEAD
 
             const volumenTotalHist = compras.reduce((acc, c) => acc + Number(c.MONTO_TOTAL || 0), 0);
 
+=======
+            const volumenTotalHist = compras.reduce((acc, c) => acc + Number(c.MONTO_TOTAL || 0), 0);
+
+            // Motor Vectorial
+>>>>>>> 073effaef5cc242ce0f8e30ee02b1699951983de
             const hoy = new Date();
             const arrMeses = [];
             const mapaVentana = {};
@@ -205,20 +224,25 @@
                 </div>
             `;
 
+<<<<<<< HEAD
             const catalogoItems = (db[cnf.ITEMS] || []).filter(i =>
+=======
+            // 🚀 CRUCE RELACIONAL (ÚNICA FUENTE DE LA VERDAD PARA CATÁLOGO Y ALÉRGENOS)
+            const itemsRelacionales = (db[cnf.ITEMS] || []).filter(i =>
+>>>>>>> 073effaef5cc242ce0f8e30ee02b1699951983de
                 String(i.RUT_PROV_PREFERENTE || '').replace(/\./g, '').trim().toUpperCase() === rutLimpio
             );
 
-            const itemsConAlergenos = catalogoItems.filter(i => {
+            const itemsConAlergenos = itemsRelacionales.filter(i => {
                 const a = String(i.ISO_ALERGENOS || 'NO DECLARADOS').toUpperCase().trim();
                 return (a !== 'NO' && a !== 'NO DECLARADOS' && a !== '');
             });
 
             let alergenosRender = '';
-            if (catalogoItems.length === 0) {
-                alergenosRender = '<span class="text-muted fst-italic extra-small">Sin catálogo en Maestro de Ítems</span>';
+            if (itemsRelacionales.length === 0) {
+                alergenosRender = '<span class="text-muted fst-italic extra-small">Sin catálogo cruzado en tabla MAESTRO_ITEMS</span>';
             } else if (itemsConAlergenos.length === 0) {
-                alergenosRender = '<span class="text-muted fst-italic fw-bold extra-small">No declara</span>';
+                alergenosRender = '<span class="text-muted fst-italic fw-bold extra-small">No declara alérgenos</span>';
             } else {
                 const listaItems = itemsConAlergenos.map(i => {
                     const alerg = String(i.ISO_ALERGENOS).toUpperCase().trim();
@@ -269,6 +293,7 @@
 
                 <ul class="nav nav-tabs fw-bold small mb-3" id="tab360">
                     <li class="nav-item"><a class="nav-link active fw-bold" data-bs-toggle="tab" href="#p-perfil"><i class="bi bi-building me-1"></i>Perfil</a></li>
+                    <li class="nav-item"><a class="nav-link fw-bold" data-bs-toggle="tab" href="#p-catalogo"><i class="bi bi-box-seam me-1"></i>Catálogo Operativo</a></li>
                     <li class="nav-item"><a class="nav-link fw-bold" data-bs-toggle="tab" href="#p-compras"><i class="bi bi-receipt me-1"></i>Facturas</a></li>
                     <li class="nav-item"><a class="nav-link fw-bold" data-bs-toggle="tab" href="#p-finanzas"><i class="bi bi-cash-stack me-1"></i>Finanzas (CxP)</a></li>
                 </ul>
@@ -297,6 +322,44 @@
                                     </ul>
                                 </div>
                             </div>
+                        </div>
+                    </div>
+
+                    <div class="tab-pane fade" id="p-catalogo">
+                        <div class="table-responsive rounded border shadow-sm" style="max-height: 350px;">
+                            <table class="table table-sm table-hover mb-0 small align-middle">
+                                <thead class="table-dark sticky-top">
+                                    <tr>
+                                        <th style="width: 15%">SKU Interno</th>
+                                        <th style="width: 45%">Nombre Técnico</th>
+                                        <th class="text-center" style="width: 20%">Tipo Ítem</th>
+                                        <th class="text-center" style="width: 20%">Estado Operativo</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${itemsRelacionales.length === 0 ? '<tr><td colspan="4" class="text-center py-4 text-muted fst-italic">No hay ítems vinculados a este proveedor en el Maestro de Ítems.</td></tr>' :
+                    itemsRelacionales.map(item => {
+                        const sku = item.SKU_INTERNO || item.ID_ITEM || 'S/N';
+                        const nombre = item.NOMBRE_TECNICO || item.DESCRIPCION || 'Sin descripción';
+
+                        // 🚀 NUEVO MAPEO: TIPO_ITEM
+                        const tipoItem = String(item.TIPO_ITEM || 'NO DEFINIDO').toUpperCase();
+                        const estado = String(item.STATUS || 'ACTIVO').toUpperCase();
+
+                        // Estilos visuales
+                        const badgeTipo = 'bg-info text-dark border border-info';
+                        const badgeEstado = estado === 'ACTIVO' ? 'bg-success' : 'bg-secondary';
+
+                        return `
+                                        <tr>
+                                            <td class="font-monospace fw-bold text-secondary ps-2">${sku}</td>
+                                            <td class="fw-bold text-uppercase">${nombre}</td>
+                                            <td class="text-center"><span class="badge ${badgeTipo} extra-small">${tipoItem}</span></td>
+                                            <td class="text-center"><span class="badge ${badgeEstado} extra-small">${estado}</span></td>
+                                        </tr>`;
+                    }).join('')}
+                                </tbody>
+                            </table>
                         </div>
                     </div>
 
@@ -474,7 +537,10 @@
                 if (existe) { p = { ...existe }; esEdicion = true; }
             }
 
+<<<<<<< HEAD
             // 1. DATA BINDING SEGURO
+=======
+>>>>>>> 073effaef5cc242ce0f8e30ee02b1699951983de
             let perfilObj = { proveedor_items: false };
             if (p.PERFIL_JSON && typeof p.PERFIL_JSON === 'string' && p.PERFIL_JSON.trim() !== '') {
                 try {
@@ -554,7 +620,10 @@
             btn.disabled = true;
             btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Registrando...';
 
+<<<<<<< HEAD
             // Lectura de campos del DOM
+=======
+>>>>>>> 073effaef5cc242ce0f8e30ee02b1699951983de
             const payload = {
                 RUT_ENTIDAD: rutInput.value.trim(),
                 RAZON_SOCIAL: document.getElementById('prov_nombre').value.trim().toUpperCase(),
@@ -567,7 +636,10 @@
                 STATUS: 'ACTIVO'
             };
 
+<<<<<<< HEAD
             // 3. INTERCEPTOR JSON (Lectura de switch y serialización)
+=======
+>>>>>>> 073effaef5cc242ce0f8e30ee02b1699951983de
             const isProvItems = document.getElementById('prov_items_switch').checked;
             const perfilCompilado = { proveedor_items: isProvItems };
             payload.PERFIL_JSON = JSON.stringify(perfilCompilado);
