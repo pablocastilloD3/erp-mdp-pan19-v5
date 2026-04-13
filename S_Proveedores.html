@@ -1,21 +1,12 @@
 <script>
     /**
      * @file S_Proveedores.html
-<<<<<<< HEAD
-     * @version 1.13.0
-     * @description Maestro de Proveedores. Trazabilidad URS-28, CRUD Híbrido (DOM Nativo + Factory) y Control PERFIL_JSON.
-     */
-
-    window.Ctrl_Proveedores = {
-        meta: { id: 'proveedores', version: '1.13.0', titulo: 'Maestro de Proveedores' },
-=======
      * @version 1.15.0
      * @description Maestro de Proveedores. Arquitectura Relacional Estricta (Eliminación de CATALOGO_JSON).
      */
 
     window.Ctrl_Proveedores = {
         meta: { id: 'proveedores', version: '1.15.0', titulo: 'Maestro de Proveedores' },
->>>>>>> 073effaef5cc242ce0f8e30ee02b1699951983de
         estado: { filtroBusqueda: '', filtroISO: '', filtroSys: 'ACTIVO', limiteFilas: 15, listenerActivo: false },
 
         init: function () {
@@ -116,9 +107,9 @@
                         {
                             label: 'Análisis', key: 'RUT_ENTIDAD',
                             render: (v) => `
-                                <button class="btn btn-primary btn-dark shadow-sm py-1 extra-small" 
+                                <button class="btn btn-sm btn-dark fw-bold rounded-pill shadow-sm px-3 py-1 extra-small" 
                                     onclick="window.Ctrl_Proveedores.abrirFicha360('${v}')">
-                                    <i class="bi bi-radar me-1"></i> Ficha
+                                    <i class="bi bi-radar me-1"></i> FICHA 360°
                                 </button>`
                         }
                     ]
@@ -135,10 +126,7 @@
 
             const rutLimpio = rut.replace(/\./g, '').trim().toUpperCase();
 
-<<<<<<< HEAD
-=======
             // Extracción Financiera
->>>>>>> 073effaef5cc242ce0f8e30ee02b1699951983de
             const compras = (db[cnf.COMPRAS] || []).filter(c =>
                 String(c.RUT_EMISOR).replace(/\./g, '').trim().toUpperCase() === rutLimpio
             );
@@ -149,15 +137,9 @@
                 uuidsCompras.includes(cxp.ID_FACTURA)
             );
             const deudaTotal = cxpList.reduce((acc, cur) => acc + (String(cur.ESTADO_PAGO) !== 'PAGADO' ? Number(cur.MONTO_DEUDA || 0) : 0), 0);
-<<<<<<< HEAD
-
-            const volumenTotalHist = compras.reduce((acc, c) => acc + Number(c.MONTO_TOTAL || 0), 0);
-
-=======
             const volumenTotalHist = compras.reduce((acc, c) => acc + Number(c.MONTO_TOTAL || 0), 0);
 
             // Motor Vectorial
->>>>>>> 073effaef5cc242ce0f8e30ee02b1699951983de
             const hoy = new Date();
             const arrMeses = [];
             const mapaVentana = {};
@@ -224,12 +206,8 @@
                 </div>
             `;
 
-<<<<<<< HEAD
-            const catalogoItems = (db[cnf.ITEMS] || []).filter(i =>
-=======
             // 🚀 CRUCE RELACIONAL (ÚNICA FUENTE DE LA VERDAD PARA CATÁLOGO Y ALÉRGENOS)
             const itemsRelacionales = (db[cnf.ITEMS] || []).filter(i =>
->>>>>>> 073effaef5cc242ce0f8e30ee02b1699951983de
                 String(i.RUT_PROV_PREFERENTE || '').replace(/\./g, '').trim().toUpperCase() === rutLimpio
             );
 
@@ -527,7 +505,6 @@
             }
         },
 
-        // 🚀 ROLLBACK UI: RESTAURACIÓN DE LA CUADRÍCULA BOOTSTRAP (MANTENIENDO PERFIL_JSON)
         abrirModalCRUD: function (rutEditar = null) {
             let p = { RUT_ENTIDAD: '', RAZON_SOCIAL: '', GIRO: '', DIRECCION: '', EMAIL: '', TELEFONO: '', ISO_RIESGO: 'EVALUACION', CONDICION_PAGO: '', OBSERVACIONES: '', PERFIL_JSON: '' };
             let esEdicion = false;
@@ -537,10 +514,6 @@
                 if (existe) { p = { ...existe }; esEdicion = true; }
             }
 
-<<<<<<< HEAD
-            // 1. DATA BINDING SEGURO
-=======
->>>>>>> 073effaef5cc242ce0f8e30ee02b1699951983de
             let perfilObj = { proveedor_items: false };
             if (p.PERFIL_JSON && typeof p.PERFIL_JSON === 'string' && p.PERFIL_JSON.trim() !== '') {
                 try {
@@ -555,7 +528,6 @@
                 tamaño: 'modal-lg'
             });
 
-            // 2. INYECCIÓN HTML DIRECTA (Recuperando el Grid UX y añadiendo el Switch UI)
             document.getElementById(bodyId).innerHTML = `
             <form id="form-prov-crud" class="p-4" onsubmit="event.preventDefault(); window.Ctrl_Proveedores.guardarProveedor(${esEdicion});">
                 <div class="row g-3">
@@ -611,7 +583,6 @@
             </form>`;
         },
 
-        // 🚀 RECUPERACIÓN DE LECTURA DOM PARA GUARDADO Y SERIALIZACIÓN JSON
         guardarProveedor: function (esEdicion) {
             const rutInput = document.getElementById('prov_rut');
             if (!esEdicion && !this.validarRutM11(rutInput.value)) return window.ERP_Utils.mostrarToast("RUT Inválido. Operación abortada.", "danger");
@@ -620,10 +591,6 @@
             btn.disabled = true;
             btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Registrando...';
 
-<<<<<<< HEAD
-            // Lectura de campos del DOM
-=======
->>>>>>> 073effaef5cc242ce0f8e30ee02b1699951983de
             const payload = {
                 RUT_ENTIDAD: rutInput.value.trim(),
                 RAZON_SOCIAL: document.getElementById('prov_nombre').value.trim().toUpperCase(),
@@ -636,10 +603,6 @@
                 STATUS: 'ACTIVO'
             };
 
-<<<<<<< HEAD
-            // 3. INTERCEPTOR JSON (Lectura de switch y serialización)
-=======
->>>>>>> 073effaef5cc242ce0f8e30ee02b1699951983de
             const isProvItems = document.getElementById('prov_items_switch').checked;
             const perfilCompilado = { proveedor_items: isProvItems };
             payload.PERFIL_JSON = JSON.stringify(perfilCompilado);
