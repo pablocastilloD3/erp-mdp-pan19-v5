@@ -7,23 +7,22 @@
                     <span id="v-items-titulo" class="text-uppercase">Maestro de Items</span>
                 </h2>
                 <p class="text-muted small mb-0" id="v-items-descripcion">
-                    Control de SKUs, parámetros de abastecimiento e inocuidad alimentaria ISO 22000.
+                    Control de SKUs e inocuidad alimentaria ISO 22000.
                 </p>
             </div>
 
             <div id="v-items-acciones-header" class="d-flex align-items-center gap-2">
-                <div class="btn-group shadow-sm bg-white" role="group" aria-label="Control de Vista">
-                    <input type="radio" class="btn-check" name="btn-vista-items" id="btn-vista-lista" autocomplete="off"
-                        checked onchange="window.Ctrl_Items.alternarVista('lista')">
-                    <label class="btn btn-outline-primary btn-sm px-3" for="btn-vista-lista"
-                        title="Vista Agrupada (Acordeón)"><i class="bi bi-list-ul"></i></label>
+                <div class="btn-group shadow-sm bg-white" role="group">
+                    <input type="radio" class="btn-check" name="btn-vista-items" id="btn-vista-lista" checked
+                        onchange="window.Ctrl_Items.alternarVista('lista')">
+                    <label class="btn btn-outline-primary btn-sm px-3" for="btn-vista-lista"><i
+                            class="bi bi-list-ul"></i></label>
 
                     <input type="radio" class="btn-check" name="btn-vista-items" id="btn-vista-tarjetas"
-                        autocomplete="off" onchange="window.Ctrl_Items.alternarVista('tarjetas')">
-                    <label class="btn btn-outline-primary btn-sm px-3" for="btn-vista-tarjetas"
-                        title="Vista Táctica (Tarjetas)"><i class="bi bi-grid"></i></label>
+                        onchange="window.Ctrl_Items.alternarVista('tarjetas')">
+                    <label class="btn btn-outline-primary btn-sm px-3" for="btn-vista-tarjetas"><i
+                            class="bi bi-grid"></i></label>
                 </div>
-
                 <button id="btn-items-nuevo" class="btn btn-primary btn-sm shadow-sm">
                     <i class="bi bi-plus-lg me-1"></i> Nuevo Item
                 </button>
@@ -35,8 +34,7 @@
 
     <div class="row">
         <div class="col-12">
-            <div id="v-items-tabla" class="w-100" style="min-height: 400px;">
-            </div>
+            <div id="v-items-tabla" class="w-100" style="min-height: 400px;"></div>
         </div>
     </div>
 </div>
