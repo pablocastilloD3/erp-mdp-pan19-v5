@@ -17,3 +17,4 @@ appsscript.json
 # Ignorar cualquier otro archivo que no quieras subir
 PROMPT.md
 V5.code-workspace
+.DS_Store
