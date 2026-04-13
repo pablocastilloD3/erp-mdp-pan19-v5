@@ -6,7 +6,7 @@
      */
 
     window.Ctrl_Proveedores = {
-        meta: { id: 'proveedores', version: '1.15.0', titulo: 'Maestro de Proveedores' },
+        meta: { id: 'proveedores', version: '1.15.0', titulo: 'Maestro de Proveedores', seguridad: { permisos: ['*', 'proveedores'], nivel_acceso: 1 } },
         estado: { filtroBusqueda: '', filtroISO: '', filtroSys: 'ACTIVO', limiteFilas: 15, listenerActivo: false },
 
         init: function () {
