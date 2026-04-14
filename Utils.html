@@ -22,23 +22,10 @@
          * 🗓️ FORMATEADOR UNIVERSAL DE FECHAS (UX)
          * Convierte cualquier entrada (Date o String ISO) al formato DD-MM-YYYY
          */
-        formatearFecha: function (valor) {
-            if (!valor) return "-";
-
-            try {
-                const d = new Date(valor);
-                if (isNaN(d.getTime())) return valor; // Si no es fecha válida, devuelve el original
-
-                // Forzamos UTC para evitar que el desfase horario de Chile reste un día
-                const dia = String(d.getUTCDate()).padStart(2, '0');
-                const mes = String(d.getUTCMonth() + 1).padStart(2, '0');
-                const año = d.getUTCFullYear();
-
-                return `${dia}-${mes}-${año}`;
-            } catch (e) {
-                console.error("Error en formatearFecha:", e);
-                return valor;
-            }
+        formatearFecha: function (fecha) {
+            if (!fecha) return 'S/F';
+            const d = new Date(fecha);
+            return d.toLocaleDateString('es-CL');
         },
 
         actualizarSplash: function (estadoPrincipal, estadoSecundario, porcentaje) {
@@ -85,6 +72,20 @@
                 modalEl.remove();
                 if (document.querySelector('.modal.show')) document.body.classList.add('modal-open');
             });
+        },
+
+        /**
+         * Formatea números al estándar financiero chileno.
+         * @param {number} monto - Valor numérico a formatear.
+         * @returns {string} - String con formato $ 0.000
+         */
+        formatearMoneda: function (monto) {
+            if (monto === undefined || monto === null || isNaN(monto)) return "$ 0";
+            return new Intl.NumberFormat('es-CL', {
+                style: 'currency',
+                currency: 'CLP',
+                minimumFractionDigits: 0
+            }).format(monto);
         },
 
         // ====================================================================
