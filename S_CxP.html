@@ -1,35 +1,15 @@
 <script>
-    /**
-     * @file S_CxP.html
-     * @version 1.6.0
-     * @description Visor de Pasivos Inmutables con Gatillo de Autorización Financiera.
-     */
-
     window.Ctrl_CxP = {
-        meta: {
-            id: 'cxp',
-            version: '1.6.0',
-            titulo: 'Autorización de Pasivos',
-            icono: 'bi-shield-check-fill',
-            tematica: 'Finanzas',
-            seguridad: { permisos: ['cxp', '*'], nivel_acceso: 1 }
-        },
-        estado: { filtroBusqueda: '', filtroEstado: 'PENDIENTE', listenerActivo: false },
+        meta: { id: 'cxp', titulo: 'Autorización de Pasivos', icono: 'bi-shield-check-fill', tematica: 'Finanzas', permisos: ['cxp', '*'] },
+        estado: { filtroBusqueda: '', filtroEstado: 'PENDIENTE' },
 
         init: function () {
-            if (!this.estado.listenerActivo) {
-                window.addEventListener('erp-datos-listos', () => {
-                    if (window.SISTEMA_ERP && window.SISTEMA_ERP.moduloActual === this.meta.id) {
-                        this.render();
-                    }
-                });
-                this.estado.listenerActivo = true;
-            }
+            window.addEventListener('erp-datos-listos', () => {
+                if (window.SISTEMA_ERP.moduloActual === this.meta.id) this.render();
+            });
         },
 
         render: function () {
-            if (!window.SISTEMA_ERP?.datos || !window.CONFIG?.DB) return;
-
             const db = window.SISTEMA_ERP.datos;
             const cnf = window.CONFIG.DB;
 
@@ -37,115 +17,53 @@
             const rawProvs = db[cnf.PROVEEDORES] || [];
             const rawCompras = db[cnf.COMPRAS] || [];
 
-            const dataProcesada = rawCxP.map(item => {
+            const data = rawCxP.map(item => {
                 const prov = rawProvs.find(p => p.RUT_ENTIDAD === item.RUT_PROVEEDOR) || {};
                 const dte = rawCompras.find(c => c.ID_UUID === item.ID_FACTURA) || {};
                 return {
                     ...item,
-                    RAZON_SOCIAL: prov.RAZON_SOCIAL || 'PROV. NO ENROLADO',
+                    RAZON_SOCIAL: prov.RAZON_SOCIAL || 'N/A',
                     ISO_STATUS: prov.ISO_RIESGO || 'EVALUACION',
-                    FOLIO_SII: dte.FOLIO || 'S/F'
+                    FOLIO_SII: dte.FOLIO || 'S/F',
+                    CONTROL_CALIDAD: dte.CONTROL_CALIDAD || ''
                 };
-            });
+            }).filter(d => d.ESTADO_PAGO === this.estado.filtroEstado);
 
-            if (window.Factory && typeof window.Factory.crearTabla === 'function') {
-                window.Factory.crearTabla('v-cxp-contenedor-principal', {
-                    data: dataProcesada.filter(d =>
-                        (d.ESTADO_PAGO || "").toString().toUpperCase() === this.estado.filtroEstado &&
-                        (d.RAZON_SOCIAL.toLowerCase().includes(this.estado.filtroBusqueda) ||
-                            String(d.RUT_PROVEEDOR).includes(this.estado.filtroBusqueda))
-                    ),
-                    idKey: 'ID_CXP',
-                    config: {
-                        pagination: true,
-                        rowsPerPage: 15,
-                        columnasCRUD: false // Desactivamos el "Editar" por defecto
-                    },
-                    columns: [
-                        {
-                            label: 'Vencimiento', key: 'VENCIMIENTO',
-                            render: (v) => `<span class="fw-bold">${window.ERP_Utils.formatearFecha(v)}</span>`
-                        },
-                        {
-                            label: 'Proveedor', key: 'RAZON_SOCIAL',
-                            render: (v, r) => `<div class="small fw-bold">${v}</div><div class="extra-small text-muted">${r.RUT_PROVEEDOR}</div>`
-                        },
-                        { label: 'Folio SII', key: 'FOLIO_SII', render: (v) => `<span class="badge bg-light text-dark border font-monospace">#${v}</span>` },
-                        {
-                            label: 'Monto Deuda',
-                            key: 'MONTO_DEUDA',
-                            render: (v) => `<span class="fw-bold text-dark">${window.ERP_Utils.formatearMoneda(v)}</span>`,
-                            align: 'end'
-                        },
-                        {
-                            label: 'Compliance ISO', key: 'ISO_STATUS',
-                            render: (v) => {
-                                const bg = v === 'BLOQUEADO' ? 'bg-danger pulse' : (v === 'ACTIVO' ? 'bg-success' : 'bg-warning text-dark');
-                                return `<span class="badge ${bg} extra-small font-monospace">${v}</span>`;
-                            }
-                        },
-                        {
-                            label: 'Acción',
-                            key: 'ID_CXP',
-                            render: (v) => `
-                                <button class="btn btn-sm btn-primary fw-bold shadow-sm px-3" 
-                                    onclick="window.Ctrl_CxP.ejecutarAutorizacion('${v}')">
-                                    <i class="bi bi-shield-check me-1"></i> AUTORIZAR
-                                </button>`
+            window.Factory.crearTabla('v-cxp-contenedor-principal', {
+                data: data,
+                idKey: 'ID_CXP',
+                columns: [
+                    { label: 'Folio', key: 'FOLIO_SII' },
+                    { label: 'Proveedor', key: 'RAZON_SOCIAL' },
+                    { label: 'Deuda', key: 'MONTO_DEUDA', render: v => window.ERP_Utils.formatearMoneda(v) },
+                    {
+                        label: 'Calidad', key: 'CONTROL_CALIDAD', render: v => {
+                            if (v === 'PENDIENTE') return '<span class="badge bg-warning">PENDIENTE</span>';
+                            if (v === 'RECHAZADO') return '<span class="badge bg-danger">RECHAZADO</span>';
+                            return '<span class="badge bg-success">BYPASS/OK</span>';
                         }
-                    ]
-                });
-            }
-        },
-
-        /**
- * EJECUCIÓN FORZADA DE AUTORIZACIÓN
- * Sin filtros, con logs de consola profundos.
- */
-        ejecutarAutorizacion: function (idCxp) {
-            console.log("🚀 [DEBUG] Iniciando proceso para ID:", idCxp);
-
-            // 1. OBTENCIÓN DE DATOS CRUDA
-            // Si esto falla, el problema es la estructura de la RAM
-            const db = window.SISTEMA_ERP.datos["CUENTAS_POR_PAGAR"];
-            const registro = db.find(d => String(d.ID_CXP) === String(idCxp));
-
-            if (!registro) {
-                console.error("❌ [ERROR] No existe el registro en la RAM del ERP.");
-                return alert("Error Crítico: El documento no existe en memoria.");
-            }
-
-            console.log("📦 [DEBUG] Datos del registro encontrados:", registro);
-
-            // 2. CONFIRMACIÓN SIMPLE
-            if (!confirm("¿EJECUTAR AUTORIZACIÓN DE PAGO?")) return;
-
-            // Intentamos activar el loading, pero si falla, seguimos
-            try { window.mostrarLoading(true); } catch (e) { console.warn("Cargador no hallado."); }
-
-            // 3. LLAMADA AL SERVIDOR (MÉTODO DIRECTO)
-            console.log("📡 [DEBUG] Enviando al servidor...");
-
-            google.script.run
-                .withSuccessHandler(function (res) {
-                    try { window.mostrarLoading(false); } catch (e) { }
-                    console.log("📥 [DEBUG] Respuesta del servidor:", res);
-
-                    const r = JSON.parse(res);
-                    if (r.success) {
-                        alert("✅ ÉXITO: Transacción finalizada.\nReferencia: " + r.ref);
-                        // Forzamos actualización visual
-                        window.ERP_Utils.recargaSilenciosa();
-                    } else {
-                        alert("❌ RECHAZADO POR EL SERVIDOR:\n" + r.message);
+                    },
+                    {
+                        label: 'Acción', key: 'ID_CXP', render: (v, r) => {
+                            const bloqueado = r.CONTROL_CALIDAD === 'PENDIENTE' || r.CONTROL_CALIDAD === 'RECHAZADO';
+                            return `<button class="btn btn-sm ${bloqueado ? 'btn-secondary' : 'btn-primary'}" 
+                                ${bloqueado ? 'disabled' : ''} 
+                                onclick="window.Ctrl_CxP.ejecutarAutorizacion('${v}')">AUTORIZAR</button>`;
+                        }
                     }
-                })
-                .withFailureHandler(function (err) {
-                    try { window.mostrarLoading(false); } catch (e) { }
-                    console.error("🚨 [FALLO RED] El servidor no respondió:", err);
-                    alert("Error de conexión: " + err);
-                })
-                .w_cxp_autorizarPagoFinal(registro, window.SISTEMA_ERP.ipCliente || "0.0.0.0");
+                ]
+            });
         },
+
+        ejecutarAutorizacion: function (id) {
+            const reg = window.SISTEMA_ERP.datos[window.CONFIG.DB.CXP].find(d => d.ID_CXP === id);
+            if (!confirm("¿Autorizar pago?")) return;
+            google.script.run.withSuccessHandler(res => {
+                const r = JSON.parse(res);
+                if (r.success) { alert("OK"); window.ERP_Utils.recargaSilenciosa(); }
+                else alert(r.message);
+            }).w_cxp_autorizarPagoFinal(reg, window.SISTEMA_ERP.ipCliente);
+        }
     };
+    window.SISTEMA_ERP.modulos[window.Ctrl_CxP.meta.id] = window.Ctrl_CxP;
 </script>
