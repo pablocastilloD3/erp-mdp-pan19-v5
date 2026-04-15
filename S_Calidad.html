@@ -1,0 +1,194 @@
+<script>
+    /**
+     * @file S_Calidad.html
+     * @description Controlador Frontend: Calidad e Inocuidad (Gatekeeper)
+     * @reparacion Alineado con Bóveda Singleton, Eventos Asíncronos y Lib_Factory v5.3.0
+     */
+    window.Ctrl_Calidad = {
+        meta: {
+            id: 'calidad',
+            version: '5.2.1',
+            titulo: 'Recepción Técnica',
+            icono: 'bi-shield-check',
+            tematica: 'Inocuidad',
+            seguridad: { permisos: ['calidad', '*'], nivel_acceso: 1 }
+        },
+
+        init: function () {
+            // PASO 4: Parche de z-index para Modal de Bootstrap en la SPA
+            const modalEl = document.getElementById('modal_inspeccion_calidad');
+            if (modalEl && modalEl.parentNode.tagName.toLowerCase() !== 'body') {
+                document.body.appendChild(modalEl);
+            }
+
+            // PASO 1: Control de Asincronía (Race Condition)
+            const bd = window.SISTEMA_ERP?.datos;
+            const tablaCompras = window.CONFIG?.DB?.COMPRAS || 'LIBRO_COMPRAS';
+
+            if (bd && bd[tablaCompras]) {
+                // Si la RAM ya está hidratada (ej. navegación tardía)
+                this.render();
+            } else {
+                // Si el módulo carga antes que la respuesta del servidor
+                window.addEventListener('erp-datos-listos', () => {
+                    if (window.SISTEMA_ERP.moduloActual === this.meta.id) {
+                        this.render();
+                    }
+                });
+            }
+        },
+
+        render: function () {
+            this.renderizarTablaPendientes();
+        },
+
+        renderizarTablaPendientes: function () {
+            const bd = window.SISTEMA_ERP.datos;
+            const tablaCompras = window.CONFIG?.DB?.COMPRAS || 'LIBRO_COMPRAS';
+
+            if (!bd[tablaCompras]) {
+                console.warn("[Gatekeeper] 🚨 No se encontró la tabla de compras en RAM.");
+                document.getElementById('ui_calidad_tabla_container').innerHTML = '<div class="alert alert-warning">No hay registros disponibles o la bóveda no ha sincronizado.</div>';
+                return;
+            }
+
+            // 🛠️ CORRECCIÓN: Filtro Flexibilizado (Atrapa 'PENDIENTE', '' o nulos)
+            const pendientes = bd[tablaCompras].filter(c => {
+                const estadoCalidad = c.CONTROL_CALIDAD ? c.CONTROL_CALIDAD.trim().toUpperCase() : '';
+                return (estadoCalidad === 'PENDIENTE' || estadoCalidad === '') && c.STATUS !== 'ANULADO';
+            });
+
+            const contadorUI = document.getElementById('ui_calidad_pendientes');
+            if (contadorUI) contadorUI.innerText = pendientes.length;
+
+            const config = {
+                data: pendientes,
+                columns: [
+                    { label: 'Folio SII', key: 'FOLIO' },
+                    { label: 'RUT Proveedor', key: 'RUT_EMISOR' },
+                    { label: 'Razón Social', key: 'RAZON_SOCIAL' },
+                    {
+                        label: 'Emisión',
+                        key: 'FECHA_EMISION',
+                        render: (val) => window.ERP_Utils.formatearFecha(val)
+                    },
+                    {
+                        label: 'Acción',
+                        key: 'ID_UUID',
+                        render: (val) => `<button class="btn btn-primary btn-sm" onclick="window.Ctrl_Calidad.abrirInspeccion('${val}')"><i class="bi bi-search me-1"></i> Evaluar Lote</button>`
+                    }
+                ],
+                idKey: 'ID_UUID',
+                config: { pagination: true, rowsPerPage: 10, columnasCRUD: false }
+            };
+
+            window.Factory.crearTabla('ui_calidad_tabla_container', config);
+        },
+
+        abrirInspeccion: function (idCompraUuid) {
+            const bd = window.SISTEMA_ERP.datos;
+            const tablaCompras = window.CONFIG?.DB?.COMPRAS || 'LIBRO_COMPRAS';
+            const tablaProv = window.CONFIG?.DB?.PROVEEDORES || 'MAESTRO_PROVEEDORES';
+
+            const compra = bd[tablaCompras].find(c => c.ID_UUID === idCompraUuid);
+            if (!compra) return;
+
+            const proveedor = bd[tablaProv].find(p => p.RUT_ENTIDAD === compra.RUT_EMISOR);
+            if (!proveedor) {
+                alert("Error de Integridad: Proveedor no localizado en Maestro de Entidades.");
+                return;
+            }
+
+            document.getElementById('hdn_compra_uuid').value = compra.ID_UUID;
+            document.getElementById('hdn_rut_proveedor').value = proveedor.RUT_ENTIDAD;
+
+            document.getElementById('lbl_calidad_folio').innerText = compra.FOLIO;
+            document.getElementById('lbl_calidad_proveedor').innerText = proveedor.RAZON_SOCIAL;
+
+            const lblRiesgo = document.getElementById('lbl_calidad_riesgo');
+            lblRiesgo.innerText = proveedor.ISO_RIESGO || "NO EVALUADO";
+            lblRiesgo.className = (proveedor.ISO_RIESGO === 'BLOQUEADO') ? "badge bg-danger" : "badge bg-success";
+
+            document.getElementById('frm_calidad_inspeccion').reset();
+
+            // Extracción de estado ISO Alérgenos del proveedor
+            const panelAlergenos = document.getElementById('ui_calidad_alergenos_panel');
+            const alertaStatus = proveedor.ALERTA_STATUS || "Sin alertas de contaminación cruzada registradas.";
+            panelAlergenos.innerHTML = `<p class="mb-0 small text-secondary">${alertaStatus}</p>`;
+
+            // Renovación de Listener para prevenir duplicación de eventos
+            const selIntegridad = document.getElementById('sel_calidad_integridad');
+            const newSelIntegridad = selIntegridad.cloneNode(true);
+            selIntegridad.parentNode.replaceChild(newSelIntegridad, selIntegridad);
+
+            newSelIntegridad.addEventListener('change', (e) => {
+                document.getElementById('ui_calidad_alerta_bloqueo').style.display = (e.target.value === 'RECHAZADO') ? 'block' : 'none';
+            });
+
+            // Desplegar Modal Bootstrap
+            const modalEl = document.getElementById('modal_inspeccion_calidad');
+            const modal = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
+            modal.show();
+        },
+
+        procesarInspeccion: function () {
+            const form = document.getElementById('frm_calidad_inspeccion');
+            if (!form.checkValidity()) {
+                form.reportValidity();
+                return;
+            }
+
+            const btn = document.getElementById('btn_calidad_procesar');
+            const originalText = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Procesando...';
+
+            const payload = {
+                idCompraUuid: document.getElementById('hdn_compra_uuid').value,
+                rutProveedor: document.getElementById('hdn_rut_proveedor').value,
+                folioFactura: document.getElementById('lbl_calidad_folio').innerText,
+                temp: parseFloat(document.getElementById('inp_calidad_temp').value),
+                humedad: parseFloat(document.getElementById('inp_calidad_hum').value),
+                integridad: document.getElementById('sel_calidad_integridad').value,
+                tempMax: 8.0,
+                tempMin: 0.0,
+                humMax: 70
+            };
+
+            google.script.run
+                .withSuccessHandler(res => {
+                    btn.disabled = false;
+                    btn.innerHTML = originalText;
+                    try {
+                        const obj = JSON.parse(res);
+                        if (obj.exito) {
+                            const modalEl = document.getElementById('modal_inspeccion_calidad');
+                            bootstrap.Modal.getInstance(modalEl).hide();
+
+                            // Sincronización forzada de la Bóveda post-transacción
+                            if (typeof window.ERP_Utils.recargaSilenciosa === 'function') {
+                                window.ERP_Utils.recargaSilenciosa();
+                            }
+                        } else {
+                            alert("Fallo Transaccional: " + obj.mensaje);
+                        }
+                    } catch (e) {
+                        alert("Respuesta corrupta del servidor.");
+                    }
+                })
+                .withFailureHandler(err => {
+                    btn.disabled = false;
+                    btn.innerHTML = originalText;
+                    alert("Error Crítico de Comunicación: " + err.message);
+                })
+                .w_ProcesarInspeccion(JSON.stringify(payload), window.SISTEMA_ERP.ipCliente);
+        }
+    };
+
+    // ============================================================================
+    // REGISTRO AUTOMÁTICO EN EL NÚCLEO SPA
+    // ============================================================================
+    if (window.SISTEMA_ERP && window.SISTEMA_ERP.modulos) {
+        window.SISTEMA_ERP.modulos[window.Ctrl_Calidad.meta.id] = window.Ctrl_Calidad;
+    }
+</script>

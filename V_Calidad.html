@@ -1,0 +1,88 @@
+<div id="view-calidad" class="container-fluid spa-view d-none fade-in pt-3">
+    <div class="d-flex justify-content-between align-items-center mb-4 border-bottom pb-2">
+        <h2 class="text-uppercase fw-bold text-dark"><i class="bi bi-shield-check text-success me-2"></i>Gatekeeper:
+            Recepción Técnica (ISO 22000)</h2>
+    </div>
+
+    <div class="row mb-4">
+        <div class="col-md-4">
+            <div class="card bg-light border-0 shadow-sm">
+                <div class="card-body">
+                    <h6 class="text-muted mb-1 fw-bold">Lotes Pendientes de Inspección</h6>
+                    <h3 id="ui_calidad_pendientes" class="mb-0 text-primary">0</h3>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card shadow-sm border-0">
+        <div class="card-body">
+            <div class="table-responsive" id="ui_calidad_tabla_container">
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="modal_inspeccion_calidad" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-dark text-white">
+                <h5 class="modal-title"><i class="bi bi-clipboard2-data"></i> Certificado de Conformidad - Folio: <span
+                        id="lbl_calidad_folio"></span></h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"
+                    aria-label="Close"></button>
+            </div>
+            <div class="modal-body bg-light">
+                <form id="frm_calidad_inspeccion">
+                    <input type="hidden" id="hdn_compra_uuid">
+                    <input type="hidden" id="hdn_rut_proveedor">
+
+                    <div class="alert alert-info py-2 mb-3">
+                        <strong>Proveedor:</strong> <span id="lbl_calidad_proveedor"></span><br>
+                        <strong>Riesgo Actual:</strong> <span id="lbl_calidad_riesgo" class="badge"></span>
+                    </div>
+
+                    <h6 class="fw-bold border-bottom pb-1">Parámetros Críticos (PCC)</h6>
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-4">
+                            <label class="form-label text-muted small fw-bold">Temp. Capturada (°C)</label>
+                            <input type="number" class="form-control form-control-sm" id="inp_calidad_temp" required
+                                step="0.1">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label text-muted small fw-bold">Humedad Relativa (%)</label>
+                            <input type="number" class="form-control form-control-sm" id="inp_calidad_hum" required
+                                step="1">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label text-muted small fw-bold">Integridad de Sello</label>
+                            <select class="form-select form-select-sm" id="sel_calidad_integridad" required>
+                                <option value="">Seleccione...</option>
+                                <option value="INTACTO">Intacto (Aprobado)</option>
+                                <option value="RECHAZADO">Roto / Alterado (Rechazo)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <h6 class="fw-bold border-bottom pb-1 text-warning mt-4"><i class="bi bi-exclamation-triangle"></i>
+                        Trazabilidad de Alérgenos</h6>
+                    <div id="ui_calidad_alergenos_panel" class="p-3 bg-white border rounded">
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer justify-content-between">
+                <div class="text-danger small fw-bold" id="ui_calidad_alerta_bloqueo" style="display:none;">
+                    <i class="bi bi-x-circle"></i> ATENCIÓN: El rechazo técnico bloqueará automáticamente los pagos al
+                    proveedor.
+                </div>
+                <div>
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-success btn-sm" id="btn_calidad_procesar"
+                        onclick="window.Ctrl_Calidad.procesarInspeccion()">
+                        <i class="bi bi-shield-lock"></i> Procesar y Firmar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
