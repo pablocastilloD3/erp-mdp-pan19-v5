@@ -99,13 +99,22 @@ function _logica_ejecutarIntegracionLote(loteDTE, email, correlationId, ip) {
                 setProveedores.add(rutL);
             }
 
-            // 📝 PERSISTENCIA EN LIBRO_COMPRAS
+            // 📝 PERSISTENCIA EN LIBRO_COMPRAS (INYECCIÓN DE CAMPOS ISO/CALIDAD AQUÍ)
             _ejecutarYValidar('COMPRAS', 'NUEVO', {
                 ID_UUID: uuidComp, STATUS: 'INTEGRADO', FECHA_EMISION: dte.fechaEmision, TIPO_DTE: dte.tipoDTE, FOLIO: folio,
                 RUT_EMISOR: rutL, RAZON_SOCIAL: rSocial, MONTO_NETO: dte.montoNeto, MONTO_EXENTO: dte.montoExento,
                 MONTO_IVA: dte.montoIva, OTROS_IMPUESTOS: dte.montoOtrosImpuestos, MONTO_TOTAL: dte.montoTotal,
                 SII_FCT_PROP: dte.siiFctProp, SOURCE_APP: dte.sourceApp, CATEGORY_FLOW: dte.categoryFlow,
-                URL_XML_PDF: JSON.stringify(urls), DETALLE_JSON: JSON.stringify(dte.items)
+                URL_XML_PDF: JSON.stringify(urls), DETALLE_JSON: JSON.stringify(dte.items),
+
+                // --- ALINEACIÓN CALIDAD Y TRAZABILIDAD (VINCULACIÓN URS-28) ---
+                FECHA_RECEPCION_REAL: '', // De quedar vacío (Evita error de trazabilidad por usar fecha de ingreso)
+                ISO_LOTE: `${rutL}_F${folio}_L1`, // Hereda de ABASTECIMIENTO_LOTES
+                ISO_VENCIMIENTO: dte.fechaVencimiento || '', // De quedar vacío si no existe (Evita fecha ingreso)
+                ISO_ALERGENOS: dte.isoAlergenos || 'NO', // Registra SI/NO
+                ISO_RIESGO_PROV: 'EVALUACION', // Inicia en EVALUACION
+                CONTROL_CALIDAD: 'PENDIENTE', // Inicia en PENDIENTE
+                ESTADO_PAGO: 'PENDIENTE' // Inicia en PENDIENTE
             }, ip);
 
             // 📦 ITEMS Y LOTES
@@ -115,10 +124,14 @@ function _logica_ejecutarIntegracionLote(loteDTE, email, correlationId, ip) {
 
                 // 🛡️ FILTRO 3: DUPLICIDAD EN MAESTRO_ITEMS
                 if (!setItems.has(skuL)) {
+                    // Evaluación dinámica: Asume 'NO' si es Factura Exenta (34) o no trae IVA, de lo contrario 'SI'
+                    const afectoIva = (String(dte.tipoDTE) === '34' || Number(dte.montoIva) === 0) ? 'NO' : 'SI';
+
                     _ejecutarYValidar('ITEMS', 'NUEVO', {
                         ID_ITEM: Utilities.getUuid(), STATUS: 'ACTIVO', SKU_INTERNO: skuL,
                         NOMBRE_TECNICO: UTIL_ToProperCase(it.nombre), UNIDAD_MEDIDA: it.unidad,
-                        RUT_PROV_PREFERENTE: rutL, ISO_ALERGENOS: dte.isoAlergenos || 'PENDIENTE'
+                        RUT_PROV_PREFERENTE: rutL, ISO_ALERGENOS: dte.isoAlergenos || 'PENDIENTE',
+                        AFECTO_IVA: afectoIva // <--- CAMPO AÑADIDO
                     }, ip);
                     setItems.add(skuL);
                 }
